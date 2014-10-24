@@ -13,6 +13,8 @@ function GeotiffParser() {
 	this.imageLength = undefined;
 	this.bitsPerPixel = undefined;
 	this.samplesPerPixel = undefined;
+	this.photometricInterpretation= undefined;
+	this.compression= undefined;
 	this.fileDirectories = [];
 	this.geoKeys = [];
 };
@@ -281,6 +283,46 @@ GeotiffParser.prototype = {
 
 		return fieldTagName;
 	},
+	
+		/* Translate GeoKey to string  */
+	getCompressionTypeName:  function (key) {
+		var compressionNames = {
+
+		1:'COMPRESSION_NONE',
+		2:'COMPRESSION_CCITTRLE',
+		3:'COMPRESSION_CCITTFAX3',
+		4:'COMPRESSION_CCITTFAX4',
+		5:'COMPRESSION_LZW',
+		6:'COMPRESSION_OJPEG',
+		7:'COMPRESSION_JPEG',
+		32766:'COMPRESSION_NEXT',
+		32771:'COMPRESSION_CCITTRLEW',
+		32773:'COMPRESSION_PACKBITS',
+		32809:'COMPRESSION_THUNDERSCAN',
+		32895:'COMPRESSION_IT8CTPAD',
+		32896:'COMPRESSION_IT8LW',
+		32897:'COMPRESSION_IT8MP',
+		32898:'COMPRESSION_IT8BL',
+		32908:'COMPRESSION_PIXARFILM',
+		32909:'COMPRESSION_PIXARLOG',
+		32946:'COMPRESSION_DEFLATE',
+		8:'COMPRESSION_ADOBE_DEFLATE',
+		32947:'COMPRESSION_DCS',
+		34661:'COMPRESSION_JBIG',
+		34676:'COMPRESSION_SGILOG',
+		34677:'COMPRESSION_SGILOG24',
+		34712:'COMPRESSION_JP2000',
+		};
+		var compressionName;
+
+		if (key in compressionNames) {
+			compressionName = compressionNames[key];
+		} else {
+			compressionName = "UNKNOWN";
+		}
+
+		return compressionName;
+	},
 
 	/* from Tiff-js  */
 	getFieldTypeName: function (fieldType) {
@@ -486,6 +528,18 @@ GeotiffParser.prototype = {
 			return true; 
 		},	
 		
+		
+	/* check  getPlanarConfiguration */
+	getPlanarConfiguration: function() {
+		var fileDirectory = this.fileDirectories[0];
+		if (fileDirectory.hasOwnProperty('PlanarConfiguration') ==false ||
+			fileDirectory.PlanarConfiguration.hasOwnProperty('values') == false ||
+			fileDirectory.PlanarConfiguration.values == null)
+			return 1; 
+	
+		return fileDirectory.PlanarConfiguration.values[0]; 
+		},
+		
 	/* check if StripOffset is set */
 	hasStripOffset: function() {
 		var fileDirectory = this.fileDirectories[0];
@@ -498,8 +552,8 @@ GeotiffParser.prototype = {
 	/* check if TileOffsets is set */
 	hasTileOffsets: function() {
 		var fileDirectory = this.fileDirectories[0];
-		if (typeof(fileDirectory.TileOffsets) == 'undefined' || fileDirectory.TileOffsets == null ||
-			typeof(fileDirectory.TileOffsets.values) == 'undefined' || fileDirectory.TileOffsets.values == null)
+		if (fileDirectory.hasOwnProperty('TileOffsets') ==false  ||
+			fileDirectory.TileOffsets.hasOwnProperty('values') == false || fileDirectory.TileOffsets.values == null)
 				return false; 
 		return true; 
 		},	
@@ -660,6 +714,138 @@ GeotiffParser.prototype = {
     return 1; /* success */
 },
 
+	/**
+	* SubFunction (should be private)
+	* Decode a Strip or a Tiles 
+	*/
+    decodeBlock: function (sampleProperties,stripOffset,stripByteCount) {
+	
+			var decodedBlock  = [];
+			var jIncrement = 1, pixel = [] ; 
+		
+			// Decompress strip.
+			switch (this.compression) {
+					// Uncompressed
+					case 1:
+						var bitOffset = 0;
+						var hasBytesPerPixel = false;
+						if ((this.bitsPerPixel % 8) === 0) {
+									hasBytesPerPixel = true;
+							var bytesPerPixel = this.bitsPerPixel / 8;
+							}
+						
+						for (var byteOffset = 0; byteOffset < stripByteCount;  byteOffset += jIncrement) {
+						
+							// Loop through samples (sub-pixels).
+							for (var m = 0, pixel = []; m < this.samplesPerPixel; m++) {
+								if (sampleProperties[m].hasBytesPerSample) {
+									// XXX: This is wrong!
+									var sampleOffset = sampleProperties[m].bytesPerSample * m;
+
+									pixel.push(this.getBytes(sampleProperties[m].bytesPerSample, stripOffset + byteOffset + sampleOffset));
+								} else {
+									var sampleInfo = this.getBits(sampleProperties[m].bitsPerSample, stripOffset + byteOffset, bitOffset);
+
+									pixel.push(sampleInfo.bits);
+
+									byteOffset = sampleInfo.byteOffset - stripOffset;
+									bitOffset  = sampleInfo.bitOffset;
+
+									throw RangeError("Cannot handle sub-byte bits per sample");
+								}
+							}
+
+							decodedBlock.push(pixel);
+
+							if (hasBytesPerPixel) {
+								jIncrement = bytesPerPixel;
+							} else {
+								jIncrement = 0;
+
+								throw RangeError("Cannot handle sub-byte bits per pixel");
+							}
+						}
+					break;
+
+					
+					// PackBits
+					case 32773:
+						var currentSample = 0;
+						var sample = 0;
+						var numBytes = 0;
+						var getHeader = true;
+						for (var byteOffset = 0; byteOffset < stripByteCount;  byteOffset += jIncrement) {
+									
+							// Are we ready for a new block?
+							if (getHeader) {
+								getHeader = false;
+
+								var blockLength = 1;
+								var iterations = 1;
+
+								// The header byte is signed.
+								var header = this.tiffDataView.getInt8(stripOffset + byteOffset, this.littleEndian);
+
+								if ((header >= 0) && (header <= 127)) { // Normal pixels.
+									blockLength = header + 1;
+								} else if ((header >= -127) && (header <= -1)) { // Collapsed pixels.
+									iterations = -header + 1;
+								} else /*if (header === -128)*/ { // Placeholder byte?
+									getHeader = true;
+								}
+							} else {
+								var currentByte = this.getBytes(1, stripOffset + byteOffset);
+
+								// Duplicate bytes, if necessary.
+								for (var m = 0; m < iterations; m++) {
+									if (sampleProperties[sample].hasBytesPerSample) {
+										// We're reading one byte at a time, so we need to handle multi-byte samples.
+										currentSample = (currentSample << (8 * numBytes)) | currentByte;
+										numBytes++;
+
+										// Is our sample complete?
+										if (numBytes === sampleProperties[sample].bytesPerSample) {
+											pixel.push(currentSample);
+											currentSample = numBytes = 0;
+											sample++;
+										}
+									} else {
+										throw RangeError("Cannot handle sub-byte bits per sample");
+									}
+
+									// Is our pixel complete?
+									if (sample === this.samplesPerPixel)
+									{
+										decodedBlock.push(pixel);
+
+										pixel = [];
+										sample = 0;
+									}
+								}
+
+								blockLength--;
+
+								// Is our block complete?
+								if (blockLength === 0) {
+									getHeader = true;
+								}
+							}
+
+							jIncrement = 1;
+						}
+					break;
+
+					// Unknown compression algorithm
+					default:
+						throw Error("Do not attempt to parse the data Compression not handled  : " + this.getCompressionTypeName(this.compression));
+						// Do not attempt to parse the image data.
+					break;
+			}
+						
+			return decodedBlock;
+
+	},
+
 /**
  * parse GeoTiff
  * modified source code from GPHemsley/tiff-js
@@ -682,21 +868,20 @@ GeotiffParser.prototype = {
 	
 		this.imageWidth = fileDirectory.ImageWidth.values[0];
 		this.imageLength = fileDirectory.ImageLength.values[0];
-	    this.parseGeoKeyDirectory();
-
-		var strips = [];
-
-		var compression = (fileDirectory.Compression) ? fileDirectory.Compression.values[0] : 1;
-
-		var samplesPerPixel = fileDirectory.SamplesPerPixel.values[0];
-	
-	   this.samplesPerPixel = samplesPerPixel;
+	    this.photometricInterpretation = fileDirectory.PhotometricInterpretation.values[0];
 		
+		this.parseGeoKeyDirectory();
+
+	
+		this.compression = (fileDirectory.Compression) ? fileDirectory.Compression.values[0] : 1;
+		console.log ("Compression " + this.getCompressionTypeName(this.compression)); 
+		this.samplesPerPixel = fileDirectory.SamplesPerPixel.values[0];
+	
+	  	
 		var sampleProperties = [];
 
-		var bitsPerPixel = 0;
-		var hasBytesPerPixel = false;
-
+		this.bitsPerPixel = 0;
+		
 		fileDirectory.BitsPerSample.values.forEach(function(bitsPerSample, i, bitsPerSampleValues) {
 			sampleProperties[i] = {
 				'bitsPerSample': bitsPerSample,
@@ -709,15 +894,11 @@ GeotiffParser.prototype = {
 				sampleProperties[i].bytesPerSample = bitsPerSample / 8;
 			}
 
-			bitsPerPixel += bitsPerSample;
+			this.bitsPerPixel += bitsPerSample;
 		}, this);
 
-		this.bitsPerPixel = bitsPerPixel;
 			
-		if ((bitsPerPixel % 8) === 0) {
-			hasBytesPerPixel = true;
-			var bytesPerPixel = bitsPerPixel / 8;
-		}
+	
 		var offsetValues = [];
 		var numoffsetValues =0;
 		var stripByteCountValues = [];
@@ -742,169 +923,37 @@ GeotiffParser.prototype = {
 		else if (this.hasTileOffsets())
 		{
 			 offsetValues = fileDirectory.TileOffsets.values;
+			  console.log("HasTileOffset : " + offsetValues); 
 			 numoffsetValues = offsetValues.length;
+			  console.log("HasTileOffset : " + numoffsetValues); 
 			 stripByteCountValues  = fileDirectory.TileByteCounts.values;
-			 var tileLength = fileDirectory.TileLength.value;
-			 var tileWidth = fileDirectory.TileWidth.value;
-			 console.log(tileLength,tileWidth);
-		
+			  console.log("TileByteCounts : " + stripByteCountValues); 
+			 var tileLength = fileDirectory.TileLength.values[0];
+			 var tileWidth = fileDirectory.TileWidth.values[0];
+			 console.log("HasTileOffset : " + tileLength, tileWidth);
+			
+			// photometricInterpretation != YCbCr  
+			var TilesAcross = (this.imageWidth + (tileWidth - 1)) / tileWidth;
+			var TilesDown = (this.imageLength + (tileLength - 1)) / tileLength;
+			var TilesInImage = TilesAcross * TilesDown;
+			if (this.getPlanarConfiguration()==2)
+				TilesInImage = TilesInImage * this.samplesPerPixel;
+			
+			//throw RangeError( 'Not Yet Implemented: Tiles organization' + TilesInImage);
 		}
 			
-		
+		var strips = [];
+
 	
 		// Loop through strips and decompress as necessary.
 		for (var i = 0; i < numoffsetValues; i++) {
 			var stripOffset = offsetValues[i];
-			strips[i] = [];
 			var stripByteCount = stripByteCountValues[i];
-
-
-			// Loop through pixels.
-			for (var byteOffset = 0, bitOffset = 0, jIncrement = 1, getHeader = true, pixel = [], numBytes = 0, sample = 0, currentSample = 0; byteOffset < stripByteCount; byteOffset += jIncrement) {
-				// Decompress strip.
-				switch (compression) {
-					// Uncompressed
-					case 1:
-					// Loop through samples (sub-pixels).
-						for (var m = 0, pixel = []; m < samplesPerPixel; m++) {
-							if (sampleProperties[m].hasBytesPerSample) {
-								// XXX: This is wrong!
-								var sampleOffset = sampleProperties[m].bytesPerSample * m;
-
-								pixel.push(this.getBytes(sampleProperties[m].bytesPerSample, stripOffset + byteOffset + sampleOffset));
-							} else {
-								var sampleInfo = this.getBits(sampleProperties[m].bitsPerSample, stripOffset + byteOffset, bitOffset);
-
-								pixel.push(sampleInfo.bits);
-
-								byteOffset = sampleInfo.byteOffset - stripOffset;
-								bitOffset = sampleInfo.bitOffset;
-
-								throw RangeError("Cannot handle sub-byte bits per sample");
-							}
-						}
-
-						strips[i].push(pixel);
-
-						if (hasBytesPerPixel) {
-							jIncrement = bytesPerPixel;
-						} else {
-							jIncrement = 0;
-
-							throw RangeError("Cannot handle sub-byte bits per pixel");
-						}
-					break;
-
-					// CITT Group 3 1-Dimensional Modified Huffman run-length encoding
-					case 2:
-						// XXX: Use PDF.js code?
-						console.log( "// CITT Group 3 1-Dimensional Modified Huffman run-length encoding" );
-					break;
-
-					// Group 3 Fax
-					case 3:
-						// XXX: Use PDF.js code?
-						console.log( "// Group 3 Fax" );
-					break;
-
-					// Group 4 Fax
-					case 4:
-						// XXX: Use PDF.js code?
-						console.log( "// Group 4 Fax" );
-					break;
-
-					// LZW
-					case 5:
-						// XXX: Use PDF.js code?
-						console.log( "// LZW" );
-					break;
-
-					// Old-style JPEG (TIFF 6.0)
-					case 6:
-						// XXX: Use PDF.js code?
-						console.log( "Old-style JPEG (TIFF 6.0)" );
-					break;
-
-					// New-style JPEG (TIFF Specification Supplement 2)
-					case 7:
-						// XXX: Use PDF.js code?
-						console.log( "New-style JPEG (TIFF Specification Supplement 2)" );
-					break;
-
-					// PackBits
-					case 32773:
-							//console.log( "// PackBits" );
-			
-						// Are we ready for a new block?
-						if (getHeader) {
-							getHeader = false;
-
-							var blockLength = 1;
-							var iterations = 1;
-
-							// The header byte is signed.
-							var header = this.tiffDataView.getInt8(stripOffset + byteOffset, this.littleEndian);
-
-							if ((header >= 0) && (header <= 127)) { // Normal pixels.
-								blockLength = header + 1;
-							} else if ((header >= -127) && (header <= -1)) { // Collapsed pixels.
-								iterations = -header + 1;
-							} else /*if (header === -128)*/ { // Placeholder byte?
-								getHeader = true;
-							}
-						} else {
-							var currentByte = this.getBytes(1, stripOffset + byteOffset);
-
-							// Duplicate bytes, if necessary.
-							for (var m = 0; m < iterations; m++) {
-								if (sampleProperties[sample].hasBytesPerSample) {
-									// We're reading one byte at a time, so we need to handle multi-byte samples.
-									currentSample = (currentSample << (8 * numBytes)) | currentByte;
-									numBytes++;
-
-									// Is our sample complete?
-									if (numBytes === sampleProperties[sample].bytesPerSample) {
-										pixel.push(currentSample);
-										currentSample = numBytes = 0;
-										sample++;
-									}
-								} else {
-									throw RangeError("Cannot handle sub-byte bits per sample");
-								}
-
-								// Is our pixel complete?
-								if (sample === samplesPerPixel)
-								{
-									strips[i].push(pixel);
-
-									pixel = [];
-									sample = 0;
-								}
-							}
-
-							blockLength--;
-
-							// Is our block complete?
-							if (blockLength === 0) {
-								getHeader = true;
-							}
-						}
-
-						jIncrement = 1;
-					break;
-
-					// Unknown compression algorithm
-					default:
-						console.log( compression  , "// Do not attempt to parse the image data." );
-						// Do not attempt to parse the image data.
-					break;
-				}
-			}
-
+			strips[i] = this.decodeBlock(sampleProperties,stripOffset,stripByteCount);	
 		}
 
-	var numStrips = strips.length;
-	var Values = [];
+		var numStrips = strips.length;
+		var FullPixelValues = [];
 
 	
 			// If RowsPerStrip is missing, the whole image is in one strip.
@@ -921,8 +970,7 @@ GeotiffParser.prototype = {
 			var numRowsInStrip = rowsPerStrip;
 			var numRowsInPreviousStrip = 0;
 
-			var photometricInterpretation = fileDirectory.PhotometricInterpretation.values[0];
-
+			
 			var extraSamplesValues = [];
 			var numExtraSamples = 0;
 
@@ -972,7 +1020,7 @@ GeotiffParser.prototype = {
 							}
 						}
 
-						switch (photometricInterpretation) {
+						switch (this.photometricInterpretation) {
 							// Bilevel or Grayscale
 							// WhiteIsZero
 							case 0:
@@ -987,7 +1035,7 @@ GeotiffParser.prototype = {
 							// BlackIsZero
 							case 1:
 								//red = green = blue = this.clampColorSample(pixelSamples[0], sampleProperties[0].bitsPerSample);
-								Values[k] = pixelSamples[0];
+								FullPixelValues[k] = pixelSamples[0];
 								k++;
 							break;
 
@@ -996,9 +1044,9 @@ GeotiffParser.prototype = {
 								red = this.clampColorSample(pixelSamples[0], sampleProperties[0].bitsPerSample);
 								green = this.clampColorSample(pixelSamples[1], sampleProperties[1].bitsPerSample);
 								blue = this.clampColorSample(pixelSamples[2], sampleProperties[2].bitsPerSample);
-								Values[k] = red;k++;
-								Values[k] = green;k++;
-								Values[k] = blue;k++;
+								FullPixelValues[k] = red;k++;
+								FullPixelValues[k] = green;k++;
+								FullPixelValues[k] = blue;k++;
 							
 							break;
 
@@ -1013,9 +1061,9 @@ GeotiffParser.prototype = {
 								red = this.clampColorSample(colorMapValues[colorMapIndex], 16);
 								green = this.clampColorSample(colorMapValues[colorMapSampleSize + colorMapIndex], 16);
 								blue = this.clampColorSample(colorMapValues[(2 * colorMapSampleSize) + colorMapIndex], 16);
-								Values[k] = red;k++;
-								Values[k] = green;k++;
-								Values[k] = blue;k++;
+								FullPixelValues[k] = red;k++;
+								FullPixelValues[k] = green;k++;
+								FullPixelValues[k] = blue;k++;
 							break;
 
 							// Transparency mask
@@ -1040,7 +1088,7 @@ GeotiffParser.prototype = {
 
 							// Unknown Photometric Interpretation
 							default:
-								throw RangeError( 'Unknown Photometric Interpretation:', photometricInterpretation );
+								throw RangeError( 'Unknown Photometric Interpretation:', this.photometricInterpretation );
 							break;
 						}	
 					}
@@ -1050,7 +1098,7 @@ GeotiffParser.prototype = {
 				numRowsInPreviousStrip = numRowsInStrip;
 			}
 		
-		return Values;
+		return FullPixelValues;
 	},
 
 	/** get the CRS code */
@@ -1082,7 +1130,7 @@ GeotiffParser.prototype = {
 	var indice = this.samplesPerPixel*(y*this.imageWidth+x);
 	for (var i=0;i<this.samplesPerPixel;i++)
 		{
-			//console.log(x,y,this.samplesPerPixel,i ) ;
+			//console.log(x,y,this.samplesPerPixel,i,buffer[indice+i] ) ;
 			value.push(buffer[indice+i]);
 		 }
 	return value;
