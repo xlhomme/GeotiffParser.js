@@ -4,6 +4,8 @@
 
 "use strict";
 
+// use pako for inflating when compression == deflate 
+
  
 
 function GeotiffParser() {
@@ -718,7 +720,7 @@ GeotiffParser.prototype = {
 	* SubFunction (should be private)
 	* Decode a Strip or a Tiles 
 	*/
-    decodeBlock: function (sampleProperties,stripOffset,stripByteCount) {
+    decodeBlock: function (sampleProperties,stripOffset,stripByteCount,moduleDecompression) {
 	
 			var decodedBlock  = [];
 			var jIncrement = 1, pixel = [] ; 
@@ -732,7 +734,15 @@ GeotiffParser.prototype = {
 						if ((this.bitsPerPixel % 8) === 0) {
 									hasBytesPerPixel = true;
 							var bytesPerPixel = this.bitsPerPixel / 8;
-							}
+						}
+							
+						if (hasBytesPerPixel) {
+							jIncrement = bytesPerPixel;
+						} else {
+							jIncrement = 0;
+
+							throw RangeError("Cannot handle sub-byte bits per pixel");
+						}
 						
 						for (var byteOffset = 0; byteOffset < stripByteCount;  byteOffset += jIncrement) {
 						
@@ -756,17 +766,61 @@ GeotiffParser.prototype = {
 							}
 
 							decodedBlock.push(pixel);
-
-							if (hasBytesPerPixel) {
-								jIncrement = bytesPerPixel;
-							} else {
-								jIncrement = 0;
-
-								throw RangeError("Cannot handle sub-byte bits per pixel");
-							}
 						}
 					break;
 
+					
+					case 32946:
+						
+						var inflator = new moduleDecompression.Inflate();
+						var bitOffset = 0;
+						var hasBytesPerPixel = false;
+						if ((this.bitsPerPixel % 8) === 0) {
+									hasBytesPerPixel = true;
+							var bytesPerPixel = this.bitsPerPixel / 8;
+						}
+							
+						if (hasBytesPerPixel) {
+							jIncrement = bytesPerPixel;
+						} else {
+							jIncrement = 0;
+
+							throw RangeError("Cannot handle sub-byte bits per pixel");
+						}
+							
+						var isLast=false;
+						for (var byteOffset = 0; byteOffset < stripByteCount;  byteOffset += jIncrement) {
+						
+							// Loop through samples (sub-pixels).
+							for (var m = 0, pixel = []; m < this.samplesPerPixel; m++) {
+								if (sampleProperties[m].hasBytesPerSample) {
+									// XXX: This is wrong!
+									var sampleOffset = sampleProperties[m].bytesPerSample * m;
+
+									pixel.push(this.getBytes(sampleProperties[m].bytesPerSample, stripOffset + byteOffset + sampleOffset));
+								} else {
+									var sampleInfo = this.getBits(sampleProperties[m].bitsPerSample, stripOffset + byteOffset, bitOffset);
+
+									pixel.push(sampleInfo.bits);
+
+									byteOffset = sampleInfo.byteOffset - stripOffset;
+									bitOffset  = sampleInfo.bitOffset;
+
+									throw RangeError("Cannot handle sub-byte bits per sample");
+								}
+							}
+								
+							if (byteOffset + jIncrement >= stripByteCount)
+								isLast = true;
+							inflator.push(pixel, isLast);
+							
+						}
+						if (inflator.err) {
+						console.log(inflator.msg);
+						}
+
+						decodedBlock.push( inflator.result);
+					break; 
 					
 					// PackBits
 					case 32773:
@@ -875,6 +929,14 @@ GeotiffParser.prototype = {
 	
 		this.compression = (fileDirectory.Compression) ? fileDirectory.Compression.values[0] : 1;
 		console.log ("Compression " + this.getCompressionTypeName(this.compression)); 
+		var moduleDecompression = undefined;
+		// utiliser requirejs pour charger les modules de décompression 
+		if (this.compression==32946)
+		{
+			define(function (require) {
+			moduleDecompression = require('pako_inflate'); });
+			//moduleDecompression= require('pako_inflate');
+		}
 		this.samplesPerPixel = fileDirectory.SamplesPerPixel.values[0];
 	
 	  	
@@ -902,6 +964,7 @@ GeotiffParser.prototype = {
 		var offsetValues = [];
 		var numoffsetValues =0;
 		var stripByteCountValues = [];
+		var rowsPerStrip  = 0;
 		if (this.hasStripOffset())
 		{
 			offsetValues = fileDirectory.StripOffsets.values;
@@ -917,6 +980,13 @@ GeotiffParser.prototype = {
 					} else {
 					throw Error("Cannot recover from missing StripByteCounts");
 				}
+			}
+			
+			// If RowsPerStrip is missing, the whole image is in one strip.
+			if (fileDirectory.RowsPerStrip) {
+				 rowsPerStrip = fileDirectory.RowsPerStrip.values[0];
+			} else {
+				 rowsPerStrip = this.imageLength;
 			}
 		}
 			
@@ -938,31 +1008,36 @@ GeotiffParser.prototype = {
 			var TilesInImage = TilesAcross * TilesDown;
 			if (this.getPlanarConfiguration()==2)
 				TilesInImage = TilesInImage * this.samplesPerPixel;
-			
+			rowsPerStrip = tileLength;
 			//throw RangeError( 'Not Yet Implemented: Tiles organization' + TilesInImage);
 		}
 			
+		//--------------------------------------------------------------------------------------	
+		// The following code should be put in OnDemand function  	
+		// Load Strip / Tiles only On Demand 
+		//--------------------------------------------------------------------------------------	
+			
 		var strips = [];
 
-	
 		// Loop through strips and decompress as necessary.
 		for (var i = 0; i < numoffsetValues; i++) {
 			var stripOffset = offsetValues[i];
 			var stripByteCount = stripByteCountValues[i];
-			strips[i] = this.decodeBlock(sampleProperties,stripOffset,stripByteCount);	
+			strips[i] = this.decodeBlock(sampleProperties,stripOffset,stripByteCount,moduleDecompression);	
 		}
 
 		var numStrips = strips.length;
+
+		// XL 
+		// the following code works only for strip 
+		// should be adapted for Tile
+
 		var FullPixelValues = [];
 
 	
-			// If RowsPerStrip is missing, the whole image is in one strip.
-			if (fileDirectory.RowsPerStrip) {
-				var rowsPerStrip = fileDirectory.RowsPerStrip.values[0];
-			} else {
-				var rowsPerStrip = this.imageLength;
-			}
-
+			
+				console.log("row per strip "+ rowsPerStrip);
+		
 		
 			var imageLengthModRowsPerStrip = this.imageLength % rowsPerStrip;
 			var rowsInLastStrip = (imageLengthModRowsPerStrip === 0) ? rowsPerStrip : imageLengthModRowsPerStrip;
