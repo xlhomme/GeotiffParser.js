@@ -18,9 +18,9 @@ See  http://trac.osgeo.org/geotiff  for geoTiff information
 
 -----------------------------------------------------------
 
-Why GeoTiff.js ?
+Why ParseGeoTiff.js ?
 
-My attempt is to parse GeoTiff files coming from a WCS server (I use a Geoserver) in order to do some computation like obtaining the elevation along a path from a DTM files. With GeoTiff client side you could also change dynamically the rendering function. 
+My attempt is to parse GeoTiff files coming from a WCS server (I'm using a Geoserver) in order to do some computation like obtaining the elevation along a path. With GeoTiff client side you could also change dynamically the rendering function. 
 
 
 
