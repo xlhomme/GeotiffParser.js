@@ -1,12 +1,13 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. 
+ *
+ * modified source code from GPHemsley/tiff-js
+  * use pako for inflating when compression == deflate 
+ */
 
 "use strict";
 
-// use pako for inflating when compression == deflate 
-
- 
 
 function GeotiffParser() {
 	this.tiffDataView = undefined;
@@ -18,6 +19,7 @@ function GeotiffParser() {
 	this.photometricInterpretation= undefined;
 	this.compression= undefined;
 	this.fileDirectories = [];
+	this.sampleProperties = [];
 	this.geoKeys = [];
 };
 
@@ -615,7 +617,7 @@ GeotiffParser.prototype = {
 			this.geoKeys=geoKeyFields ;	
 	},
 	
-		/* Test */
+	/* Test */
 	consoleGeotiffProperty: function () {
 		var fileDirectory = this.fileDirectories[0];
 		var hdr_version = fileDirectory.GeoKeyDirectory.values[0];
@@ -651,7 +653,7 @@ GeotiffParser.prototype = {
 	/* Test */
 	consoleTestGeorefImage: function () {
 	
-	var x=2;
+		var x=2;
 		var y=2;
 		var res= this.ImageToPCS(x,y);
 		if (res[0] == 1) 
@@ -713,14 +715,58 @@ GeotiffParser.prototype = {
 				return 0; 
 	
 	
-    return 1; /* success */
-},
+		return 1; /* success */
+	},
 
-	/**
+	/*
+	 * parse Header
+	 * 
+	 */
+	parseHeader: function (tiffArrayBuffer) {
+		
+		this.tiffDataView = new DataView(tiffArrayBuffer);		
+		this.littleEndian = this.isLittleEndian(this.tiffDataView);
+
+		if (!this.hasTowel(this.tiffDataView, this.littleEndian)) {
+			return;
+		}
+
+		var firstIFDByteOffset = this.getBytes(4, 4);
+
+		this.fileDirectories = this.parseFileDirectory(firstIFDByteOffset);
+
+		var fileDirectory = this.fileDirectories[0];
+
+	
+		this.imageWidth = fileDirectory.ImageWidth.values[0];
+		this.imageLength = fileDirectory.ImageLength.values[0];
+	    this.photometricInterpretation = fileDirectory.PhotometricInterpretation.values[0];
+		this.samplesPerPixel = fileDirectory.SamplesPerPixel.values[0];
+		
+		this.bitsPerPixel = 0;
+		fileDirectory.BitsPerSample.values.forEach(function(bitsPerSample, i, bitsPerSampleValues) {
+			this.sampleProperties[i] = {
+				'bitsPerSample': bitsPerSample,
+				'hasBytesPerSample': false,
+				'bytesPerSample': undefined,
+			};
+
+			if ((bitsPerSample % 8) === 0) {
+				this.sampleProperties[i].hasBytesPerSample = true;
+				this.sampleProperties[i].bytesPerSample = bitsPerSample / 8;
+			}
+
+			this.bitsPerPixel += bitsPerSample;
+		}, this);
+		this.parseGeoKeyDirectory();
+	},
+
+
+	/*
 	* SubFunction (should be private)
 	* Decode a Strip or a Tiles 
 	*/
-    decodeBlock: function (sampleProperties,stripOffset,stripByteCount,moduleDecompression) {
+    decodeBlock: function (stripOffset,stripByteCount,moduleDecompression) {
 	
 			var decodedBlock  = [];
 			var jIncrement = 1, pixel = [] ; 
@@ -748,13 +794,13 @@ GeotiffParser.prototype = {
 						
 							// Loop through samples (sub-pixels).
 							for (var m = 0, pixel = []; m < this.samplesPerPixel; m++) {
-								if (sampleProperties[m].hasBytesPerSample) {
+								if (this.sampleProperties[m].hasBytesPerSample) {
 									// XXX: This is wrong!
-									var sampleOffset = sampleProperties[m].bytesPerSample * m;
+									var sampleOffset = this.sampleProperties[m].bytesPerSample * m;
 
-									pixel.push(this.getBytes(sampleProperties[m].bytesPerSample, stripOffset + byteOffset + sampleOffset));
+									pixel.push(this.getBytes(this.sampleProperties[m].bytesPerSample, stripOffset + byteOffset + sampleOffset));
 								} else {
-									var sampleInfo = this.getBits(sampleProperties[m].bitsPerSample, stripOffset + byteOffset, bitOffset);
+									var sampleInfo = this.getBits(this.sampleProperties[m].bitsPerSample, stripOffset + byteOffset, bitOffset);
 
 									pixel.push(sampleInfo.bits);
 
@@ -769,7 +815,8 @@ GeotiffParser.prototype = {
 						}
 					break;
 
-					
+					// Deflate 
+					// Code not yes validate 
 					case 32946:
 						
 						var inflator = new moduleDecompression.Inflate();
@@ -793,13 +840,13 @@ GeotiffParser.prototype = {
 						
 							// Loop through samples (sub-pixels).
 							for (var m = 0, pixel = []; m < this.samplesPerPixel; m++) {
-								if (sampleProperties[m].hasBytesPerSample) {
+								if (this.sampleProperties[m].hasBytesPerSample) {
 									// XXX: This is wrong!
-									var sampleOffset = sampleProperties[m].bytesPerSample * m;
+									var sampleOffset = this.sampleProperties[m].bytesPerSample * m;
 
-									pixel.push(this.getBytes(sampleProperties[m].bytesPerSample, stripOffset + byteOffset + sampleOffset));
+									pixel.push(this.getBytes(this.sampleProperties[m].bytesPerSample, stripOffset + byteOffset + sampleOffset));
 								} else {
-									var sampleInfo = this.getBits(sampleProperties[m].bitsPerSample, stripOffset + byteOffset, bitOffset);
+									var sampleInfo = this.getBits(this.sampleProperties[m].bitsPerSample, stripOffset + byteOffset, bitOffset);
 
 									pixel.push(sampleInfo.bits);
 
@@ -852,13 +899,13 @@ GeotiffParser.prototype = {
 
 								// Duplicate bytes, if necessary.
 								for (var m = 0; m < iterations; m++) {
-									if (sampleProperties[sample].hasBytesPerSample) {
+									if (this.sampleProperties[sample].hasBytesPerSample) {
 										// We're reading one byte at a time, so we need to handle multi-byte samples.
 										currentSample = (currentSample << (8 * numBytes)) | currentByte;
 										numBytes++;
 
 										// Is our sample complete?
-										if (numBytes === sampleProperties[sample].bytesPerSample) {
+										if (numBytes === this.sampleProperties[sample].bytesPerSample) {
 											pixel.push(currentSample);
 											currentSample = numBytes = 0;
 											sample++;
@@ -900,33 +947,13 @@ GeotiffParser.prototype = {
 
 	},
 
-/**
- * parse GeoTiff
- * modified source code from GPHemsley/tiff-js
- */
-	loadPixels: function (tiffArrayBuffer) {
+	/**
+	 * Load Pixels 
+	 * modified source code from GPHemsley/tiff-js
+	 */
+	loadPixels: function () {
 		
-		this.tiffDataView = new DataView(tiffArrayBuffer);		
-		this.littleEndian = this.isLittleEndian(this.tiffDataView);
-
-		if (!this.hasTowel(this.tiffDataView, this.littleEndian)) {
-			return;
-		}
-
-		var firstIFDByteOffset = this.getBytes(4, 4);
-
-		this.fileDirectories = this.parseFileDirectory(firstIFDByteOffset);
-
 		var fileDirectory = this.fileDirectories[0];
-
-	
-		this.imageWidth = fileDirectory.ImageWidth.values[0];
-		this.imageLength = fileDirectory.ImageLength.values[0];
-	    this.photometricInterpretation = fileDirectory.PhotometricInterpretation.values[0];
-		
-		this.parseGeoKeyDirectory();
-
-	
 		this.compression = (fileDirectory.Compression) ? fileDirectory.Compression.values[0] : 1;
 		console.log ("Compression " + this.getCompressionTypeName(this.compression)); 
 		var moduleDecompression = undefined;
@@ -937,30 +964,8 @@ GeotiffParser.prototype = {
 			moduleDecompression = require('pako_inflate'); });
 			//moduleDecompression= require('pako_inflate');
 		}
-		this.samplesPerPixel = fileDirectory.SamplesPerPixel.values[0];
 	
 	  	
-		var sampleProperties = [];
-
-		this.bitsPerPixel = 0;
-		
-		fileDirectory.BitsPerSample.values.forEach(function(bitsPerSample, i, bitsPerSampleValues) {
-			sampleProperties[i] = {
-				'bitsPerSample': bitsPerSample,
-				'hasBytesPerSample': false,
-				'bytesPerSample': undefined,
-			};
-
-			if ((bitsPerSample % 8) === 0) {
-				sampleProperties[i].hasBytesPerSample = true;
-				sampleProperties[i].bytesPerSample = bitsPerSample / 8;
-			}
-
-			this.bitsPerPixel += bitsPerSample;
-		}, this);
-
-			
-	
 		var offsetValues = [];
 		var numoffsetValues =0;
 		var stripByteCountValues = [];
@@ -1023,7 +1028,7 @@ GeotiffParser.prototype = {
 		for (var i = 0; i < numoffsetValues; i++) {
 			var stripOffset = offsetValues[i];
 			var stripByteCount = stripByteCountValues[i];
-			strips[i] = this.decodeBlock(sampleProperties,stripOffset,stripByteCount,moduleDecompression);	
+			strips[i] = this.decodeBlock(stripOffset,stripByteCount,moduleDecompression);	
 		}
 
 		var numStrips = strips.length;
@@ -1034,144 +1039,142 @@ GeotiffParser.prototype = {
 
 		var FullPixelValues = [];
 
-	
-			
-				console.log("row per strip "+ rowsPerStrip);
+		console.log("row per strip "+ rowsPerStrip);
 		
 		
-			var imageLengthModRowsPerStrip = this.imageLength % rowsPerStrip;
-			var rowsInLastStrip = (imageLengthModRowsPerStrip === 0) ? rowsPerStrip : imageLengthModRowsPerStrip;
+		var imageLengthModRowsPerStrip = this.imageLength % rowsPerStrip;
+		var rowsInLastStrip = (imageLengthModRowsPerStrip === 0) ? rowsPerStrip : imageLengthModRowsPerStrip;
 
-			var numRowsInStrip = rowsPerStrip;
-			var numRowsInPreviousStrip = 0;
+		var numRowsInStrip = rowsPerStrip;
+		var numRowsInPreviousStrip = 0;
 
-			
-			var extraSamplesValues = [];
-			var numExtraSamples = 0;
+		
+		var extraSamplesValues = [];
+		var numExtraSamples = 0;
 
-			if (fileDirectory.ExtraSamples) {
-				extraSamplesValues = fileDirectory.ExtraSamples.values;
-				numExtraSamples = extraSamplesValues.length;
+		if (fileDirectory.ExtraSamples) {
+			extraSamplesValues = fileDirectory.ExtraSamples.values;
+			numExtraSamples = extraSamplesValues.length;
+		}
+
+		if (fileDirectory.ColorMap) {
+			var colorMapValues = fileDirectory.ColorMap.values;
+			var colorMapSampleSize = Math.pow(2, this.sampleProperties[0].bitsPerSample);
+		}
+
+		var k=0;
+		// Loop through the strips in the image.
+		for (var i = 0; i < numStrips; i++) {
+		
+			// The last strip may be short.
+			if ((i + 1) === numStrips) {
+				numRowsInStrip = rowsInLastStrip;
 			}
 
-			if (fileDirectory.ColorMap) {
-				var colorMapValues = fileDirectory.ColorMap.values;
-				var colorMapSampleSize = Math.pow(2, sampleProperties[0].bitsPerSample);
-			}
+			var numPixels = strips[i].length;
+			var yPadding = numRowsInPreviousStrip * i;
 
-			var k=0;
-			// Loop through the strips in the image.
-			for (var i = 0; i < numStrips; i++) {
-			
-				// The last strip may be short.
-				if ((i + 1) === numStrips) {
-					numRowsInStrip = rowsInLastStrip;
-				}
+			// Loop through the rows in the strip.
+			for (var y = 0, j = 0; y < numRowsInStrip, j < numPixels; y++) {
+				// Loop through the pixels in the row.
+				for (var x = 0; x < this.imageWidth; x++, j++) {
+					var pixelSamples = strips[i][j];
+					
 
-				var numPixels = strips[i].length;
-				var yPadding = numRowsInPreviousStrip * i;
+					//  Put the following  code to a PixelToCanvas function 
+					var red = 0;
+					var green = 0;
+					var blue = 0;
+					var opacity = 1.0;
 
-				// Loop through the rows in the strip.
-				for (var y = 0, j = 0; y < numRowsInStrip, j < numPixels; y++) {
-					// Loop through the pixels in the row.
-					for (var x = 0; x < this.imageWidth; x++, j++) {
-						var pixelSamples = strips[i][j];
-						
+					if (numExtraSamples > 0) {
+						for (var k = 0; k < numExtraSamples; k++) {
+							if (extraSamplesValues[k] === 1 || extraSamplesValues[k] === 2) {
+								// Clamp opacity to the range [0,1].
+								opacity = pixelSamples[3 + k] / 256;
 
-						//  Put the following  code to a PixelToCanvas function 
-						var red = 0;
-						var green = 0;
-						var blue = 0;
-						var opacity = 1.0;
-
-						if (numExtraSamples > 0) {
-							for (var k = 0; k < numExtraSamples; k++) {
-								if (extraSamplesValues[k] === 1 || extraSamplesValues[k] === 2) {
-									// Clamp opacity to the range [0,1].
-									opacity = pixelSamples[3 + k] / 256;
-
-									break;
-								}
+								break;
 							}
 						}
-
-						switch (this.photometricInterpretation) {
-							// Bilevel or Grayscale
-							// WhiteIsZero
-							case 0:
-								if (sampleProperties[0].hasBytesPerSample) {
-									var invertValue = Math.pow(0x10, sampleProperties[0].bytesPerSample * 2);
-								}
-
-								// Invert samples.
-								pixelSamples.forEach(function(sample, index, samples) { samples[index] = invertValue - sample; });
-
-							// Bilevel or Grayscale
-							// BlackIsZero
-							case 1:
-								//red = green = blue = this.clampColorSample(pixelSamples[0], sampleProperties[0].bitsPerSample);
-								FullPixelValues[k] = pixelSamples[0];
-								k++;
-							break;
-
-							// RGB Full Color
-							case 2:
-								red = this.clampColorSample(pixelSamples[0], sampleProperties[0].bitsPerSample);
-								green = this.clampColorSample(pixelSamples[1], sampleProperties[1].bitsPerSample);
-								blue = this.clampColorSample(pixelSamples[2], sampleProperties[2].bitsPerSample);
-								FullPixelValues[k] = red;k++;
-								FullPixelValues[k] = green;k++;
-								FullPixelValues[k] = blue;k++;
-							
-							break;
-
-							// RGB Color Palette
-							case 3:
-								if (colorMapValues === undefined) {
-									throw Error("Palette image missing color map");
-								}
-
-								var colorMapIndex = pixelSamples[0];
-
-								red = this.clampColorSample(colorMapValues[colorMapIndex], 16);
-								green = this.clampColorSample(colorMapValues[colorMapSampleSize + colorMapIndex], 16);
-								blue = this.clampColorSample(colorMapValues[(2 * colorMapSampleSize) + colorMapIndex], 16);
-								FullPixelValues[k] = red;k++;
-								FullPixelValues[k] = green;k++;
-								FullPixelValues[k] = blue;k++;
-							break;
-
-							// Transparency mask
-							case 4:
-								throw RangeError( 'Not Yet Implemented: Transparency mask' );
-							break;
-
-							// CMYK
-							case 5:
-								throw RangeError( 'Not Yet Implemented: CMYK' );
-							break;
-
-							// YCbCr
-							case 6:
-								throw RangeError( 'Not Yet Implemented: YCbCr' );
-							break;
-
-							// CIELab
-							case 8:
-								throw RangeError( 'Not Yet Implemented: CIELab' );
-							break;
-
-							// Unknown Photometric Interpretation
-							default:
-								throw RangeError( 'Unknown Photometric Interpretation:', this.photometricInterpretation );
-							break;
-						}	
 					}
-										
-				}
 
-				numRowsInPreviousStrip = numRowsInStrip;
+					switch (this.photometricInterpretation) {
+						// Bilevel or Grayscale
+						// WhiteIsZero
+						case 0:
+							if (this.sampleProperties[0].hasBytesPerSample) {
+								var invertValue = Math.pow(0x10, this.sampleProperties[0].bytesPerSample * 2);
+							}
+
+							// Invert samples.
+							pixelSamples.forEach(function(sample, index, samples) { samples[index] = invertValue - sample; });
+
+						// Bilevel or Grayscale
+						// BlackIsZero
+						case 1:
+							//red = green = blue = this.clampColorSample(pixelSamples[0], this.sampleProperties[0].bitsPerSample);
+							FullPixelValues[k] = pixelSamples[0];
+							k++;
+						break;
+
+						// RGB Full Color
+						case 2:
+							red = this.clampColorSample(pixelSamples[0], this.sampleProperties[0].bitsPerSample);
+							green = this.clampColorSample(pixelSamples[1], this.sampleProperties[1].bitsPerSample);
+							blue = this.clampColorSample(pixelSamples[2], this.sampleProperties[2].bitsPerSample);
+							FullPixelValues[k] = red;k++;
+							FullPixelValues[k] = green;k++;
+							FullPixelValues[k] = blue;k++;
+						
+						break;
+
+						// RGB Color Palette
+						case 3:
+							if (colorMapValues === undefined) {
+								throw Error("Palette image missing color map");
+							}
+
+							var colorMapIndex = pixelSamples[0];
+
+							red = this.clampColorSample(colorMapValues[colorMapIndex], 16);
+							green = this.clampColorSample(colorMapValues[colorMapSampleSize + colorMapIndex], 16);
+							blue = this.clampColorSample(colorMapValues[(2 * colorMapSampleSize) + colorMapIndex], 16);
+							FullPixelValues[k] = red;k++;
+							FullPixelValues[k] = green;k++;
+							FullPixelValues[k] = blue;k++;
+						break;
+
+						// Transparency mask
+						case 4:
+							throw RangeError( 'Not Yet Implemented: Transparency mask' );
+						break;
+
+						// CMYK
+						case 5:
+							throw RangeError( 'Not Yet Implemented: CMYK' );
+						break;
+
+						// YCbCr
+						case 6:
+							throw RangeError( 'Not Yet Implemented: YCbCr' );
+						break;
+
+						// CIELab
+						case 8:
+							throw RangeError( 'Not Yet Implemented: CIELab' );
+						break;
+
+						// Unknown Photometric Interpretation
+						default:
+							throw RangeError( 'Unknown Photometric Interpretation:', this.photometricInterpretation );
+						break;
+					}	
+				}
+									
 			}
+
+			numRowsInPreviousStrip = numRowsInStrip;
+		}
 		
 		return FullPixelValues;
 	},
