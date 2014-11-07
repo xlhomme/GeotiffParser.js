@@ -583,6 +583,16 @@ GeotiffParser.prototype = {
 			return -1;	
 		},
 		
+	/* getBlock : this function get the block with blockOffset value has been loaded  */
+	getBlock: function(blockOffset) {
+			var blocks = this.blocks;
+			for (var i=0;i<blocks.length;i++)
+				if (this.blocks[i]!=null && this.blocks[i].offset==blockOffset)
+					return this.blocks[i];
+				
+			return null;	
+		},
+		
 	/* add the new block to the list of the block 
 	 * ToDo : limit the number of block loaded in order to control the memory isage
 	 * remove older block 
@@ -601,7 +611,7 @@ GeotiffParser.prototype = {
 		},	
 	
 	/* check if TileOffsets is set */
-	hasTileOffsets: function() {
+	hasTileOffset: function() {
 		var fileDirectory = this.fileDirectories[0];
 		if (fileDirectory.hasOwnProperty('TileOffsets') ==false  ||
 			fileDirectory.TileOffsets.hasOwnProperty('values') == false || fileDirectory.TileOffsets.values == null)
@@ -687,7 +697,7 @@ GeotiffParser.prototype = {
 			
 		}
 			
-	    if (this.hasTileOffsets())
+	    if (this.hasTileOffset())
 		{
 			var  numoffsetValues = fileDirectory.TileOffsets.values.length;
 			console.log("Has Tiles  offsetvalues count:" + numoffsetValues );
@@ -843,8 +853,6 @@ GeotiffParser.prototype = {
 		this.parseGeoKeyDirectory();
 		
 		
-		
-	
 	},
 
 
@@ -1091,7 +1099,7 @@ GeotiffParser.prototype = {
 			}
 		}
 			
-		else if (this.hasTileOffsets())
+		else if (this.hasTileOffset())
 		{
 			 offsetValues = fileDirectory.TileOffsets.values;
 			  console.log("HasTileOffset : " + offsetValues); 
@@ -1263,54 +1271,101 @@ GeotiffParser.prototype = {
 	*  1 -  check if the block is loaded  if not load the block
 	*  2 - get the pixel value in the block
 	*/
-	test_getPixelValueOnDemand: function(x,y) {
+	getPixelValueOnDemand: function(x,y) {
 		if(this.getPlanarConfiguration()!=1)
 			throw("Other Planar Configuration is not yet implemented"); 
-		var indice = this.samplesPerPixel*(y*this.imageWidth+x);
+	
+    	var value = []
 		
 		var fileDirectory = this.fileDirectories[0];
-		var stripToLoad = 0;
+		var blockToLoad = 0;
 		var offsetValues = [];
 		var numoffsetValues =0;
-		var stripByteCountValues = [];
+		var blockByteCountValues = [];
 		var rowsPerStrip  = 0;
+		var decompressionModule = this.getDecompressionModule();
+		var xInBlock=x;
+		var yInBlock=y;
+		var blockWidth = 0 ;
+		var blockInfo = [] ;
 		if (this.hasStripOffset())
 		{
 			
 			// If RowsPerStrip is missing, the whole image is in one strip.
 			if (fileDirectory.RowsPerStrip) {
 				 rowsPerStrip = fileDirectory.RowsPerStrip.values[0];
-				  stripToLoad = Math.floor(y / rowsPerStrip) ;
+				  blockToLoad = Math.floor(y / rowsPerStrip) ;
 			} else {
 				 rowsPerStrip = this.imageLength;
 			}
-			var offsetValues = fileDirectory.StripOffsets.values;
+			offsetValues = fileDirectory.StripOffsets.values;
+			blockWidth = this.imageWidth;
 			
-			// StripByteCounts is supposed to be required, but see if we can recover anyway.
-			if (fileDirectory.StripByteCounts) {
-				 stripByteCountValues = fileDirectory.StripByteCounts.values;
-			} else {
-				console.log("Missing StripByteCounts!");
-				// Infer StripByteCounts, if possible.
-				if (numoffsetValues === 1) {
-					stripByteCountValues = [Math.ceil((this.imageWidth * this.imageLength * bitsPerPixel) / 8)];
-					} else {
-					throw Error("Cannot recover from missing StripByteCounts");
-				}
-			}
-			var decompressionModule = this.getDecompressionModule();
-			var idBlocks = this.isBlockLoaded( offsetValues[stripToLoad]);
+			var idBlocks = this.isBlockLoaded( offsetValues[blockToLoad]);
 			if ( idBlocks == -1)
 			 {
-				this.addBlock(stripToLoad, this.decodeBlock(offsetValues[stripToLoad], stripByteCountValues[stripToLoad],decompressionModule));	
-				console.log("Load block " , stripToLoad);
+				 // StripByteCounts is supposed to be required, but see if we can recover anyway.
+				if (fileDirectory.StripByteCounts) {
+					 blockByteCountValues = fileDirectory.StripByteCounts.values;
+				} else {
+					console.log("Missing StripByteCounts!");
+					// Infer StripByteCounts, if possible.
+					if (numoffsetValues === 1) {
+						blockByteCountValues = [Math.ceil((this.imageWidth * this.imageLength * bitsPerPixel) / 8)];
+						} else {
+						throw Error("Cannot recover from missing StripByteCounts");
+					}
+				}
+				blockInfo = this.decodeBlock(offsetValues[blockToLoad], blockByteCountValues[blockToLoad],decompressionModule);
+				this.addBlock(blockToLoad,blockInfo );	
+				console.log("Load block " , blockToLoad);
 			 }
 			 else
 			 {
-				console.log("Block is already load" , stripToLoad, idBlocks );
+				console.log("Block is already load" , blockToLoad, idBlocks );
+				blockInfo = this.blocks[idBlocks];
 			 }
+			 
+			 yInBlock= y %rowsPerStrip ; 
+			
 				
 		}
+		else if (this.hasTileOffset())
+		{
+			 offsetValues = fileDirectory.TileOffsets.values;
+			 var tileLength = fileDirectory.TileLength.values[0];
+			 var tileWidth = fileDirectory.TileWidth.values[0];
+			 var iTile= Math.floor(x/tileWidth);
+			 var jTile= Math.floor(y/tileLength);
+			 var TilesAcross = Math.ceil(this.imageWidth  / tileWidth);
+			 blockToLoad = jTile * TilesAcross + iTile;
+			 blockWidth = tileWidth;
+			 
+			 var idBlocks = this.isBlockLoaded( offsetValues[blockToLoad]);
+			 if ( idBlocks == -1)
+			 {
+				blockByteCountValues = fileDirectory.TileByteCounts.values;
+				blockInfo = this.decodeBlock(offsetValues[blockToLoad], blockByteCountValues[blockToLoad],decompressionModule);
+				this.addBlock(blockToLoad,blockInfo );	
+				console.log("Load block " , blockToLoad);
+			 }
+			 else
+			 {
+				console.log("Block is already load" , blockToLoad, idBlocks );
+				blockInfo = this.blocks[idBlocks];
+			 }
+			 
+			 xInBlock= x %tileWidth ; 
+			 yInBlock= y %tileLength ; 
+			 
+		}
+		var indice = this.samplesPerPixel*(yInBlock*blockWidth+xInBlock);
+		for (var i=0;i<this.samplesPerPixel;i++)
+			{
+				value.push(blockInfo.value[indice+i]);
+			}
+		
+		return value;
 		
 	
 	},
@@ -1330,8 +1385,7 @@ GeotiffParser.prototype = {
 			CRSCode =this.geoKeys['ProjectedCSTypeGeoKey'].value ;
 		return CRSCode;
 	},
-		
-	
+
 /**
  * Get the pixel value 
  * Ex : var pixels = parse.parseTIFF(response);
@@ -1403,14 +1457,16 @@ GeotiffParser.prototype = {
 	  var modelTransformation = fileDirectory.ModelTransformation.values;
 	  transform_count= modelTransformation.length;
 	  }
-  
+   
 	//--------------------------------------------------------------------
 	//If the pixelscale count is zero, but we have tiepoints use      
 	//the tiepoint based approach.                                    
 	//--------------------------------------------------------------------
     if( tiepoint_count > 6 && count == 0 ) 
     {
-        res = GTIFTiepointTranslate( tiepoint_count / 6, x, y ,true);
+		console.log(" tiepoint_count " , tiepoint_count);
+	
+        res = this.GTIFTiepointTranslate( tiepoint_count / 6, x, y ,true);
     }
 
 	//--------------------------------------------------------------------
@@ -1531,7 +1587,7 @@ GeotiffParser.prototype = {
 // -------------------------------------------------------------------- 
     if( tiepoint_count > 6 && count == 0 )
     {
-       res = GTIFTiepointTranslate( tiepoint_count / 6, x, y , false);
+       res = this.GTIFTiepointTranslate( tiepoint_count / 6, x, y , false);
     }
 
 // -------------------------------------------------------------------- 
