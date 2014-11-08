@@ -7,9 +7,9 @@ Not all Tiff capacity has been coded.
 
 What's supported 
 
-Compression     :   None and Packbits 
-Strips / Tiles  :  Supported
-Photometric Interpretation : RGB , GreyScale; BiLevel, RGB, RGB Color Palette
+Compression     :   None and Packbits  <BR>
+Strips / Tiles  :  Supported <BR>
+Photometric Interpretation : RGB , GreyScale; BiLevel, RGB, RGB Color Palette<BR>
 
 
 Some part of the code is a port from LibGeoTiff 1.4.0
