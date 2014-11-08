@@ -1,5 +1,6 @@
+
 function testGeotiffParser(data) {
- 
+
 	var parser = new GeotiffParser();
 
 	// parseHeader to read TIff / Geotiff parameters
@@ -26,14 +27,12 @@ function testGeotiffParser(data) {
 	
 	console.log("Try first part of the function getPixelValueOnDemand " );
 	console.log("x=" + 10 + " y=" + 10 + " pixels="+ parser.getPixelValueOnDemand(10,10));
-	console.log("x=" + 11 + " y=" + 10 + " pixels="+ parser.getPixelValueOnDemand(11,10));
-	
+	//console.log("x=" + 11 + " y=" + 10 + " pixels="+ parser.getPixelValueOnDemand(11,10));
+	console.log("x=" + 362 + " y=" + 2 + " pixels="+ parser.getPixelValueOnDemand(362,2));
 	// Get the buffer of pixels
 	// Get a sample of pixels value 
 	var pixels = parser.loadPixels();
-	for (var i =200; i <210 ; i++) {
-		var j=200;
-		console.log("x=" + i + " y=" + j + " pixels="+ parser.getPixelValue(pixels,i,j) );
-	}
+	console.log("x=" + 10 + " y=" + 10 + " pixels="+ parser.getPixelValue(pixels,10,10) );
+	
 }
 	

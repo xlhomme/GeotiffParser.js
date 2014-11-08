@@ -22,6 +22,12 @@ function GeotiffParser() {
 	this.sampleProperties = [];
 	this.geoKeys = [];
 	this.blocks = [];
+	this.colorMapValues = [];
+	this.colorMapSampleSize = undefined;
+	
+	this.extraSamplesValues = [];
+	this.numExtraSamples = 0;
+
 };
 
 /* GeotiffParser */ 
@@ -850,6 +856,21 @@ GeotiffParser.prototype = {
 		
 		this.compression = (fileDirectory.Compression) ? fileDirectory.Compression.values[0] : 1;
 		
+		
+		if (fileDirectory.ColorMap) {
+			this.colorMapValues = fileDirectory.ColorMap.values;
+			this.colorMapSampleSize = Math.pow(2, this.sampleProperties[0].bitsPerSample);
+		}
+		
+		
+		if (fileDirectory.ExtraSamples) {
+			this.extraSamplesValues = fileDirectory.ExtraSamples.values;
+			this.numExtraSamples = extraSamplesValues.length;
+		}
+
+		
+		
+		
 		this.parseGeoKeyDirectory();
 		
 		
@@ -1063,209 +1084,111 @@ GeotiffParser.prototype = {
 	
 	/**
 	 * Load Pixels 
-	 * modified source code from GPHemsley/tiff-js
 	 */
 	loadPixels: function () {
-		
-		var fileDirectory = this.fileDirectories[0];
-		
-		var offsetValues = [];
-		var numoffsetValues =0;
-		var stripByteCountValues = [];
-		var rowsPerStrip  = 0;
-		var blockWidth = this.imageWidth;
-		if (this.hasStripOffset())
-		{
-			offsetValues = fileDirectory.StripOffsets.values;
-			 numoffsetValues = offsetValues.length;
-			// StripByteCounts is supposed to be required, but see if we can recover anyway.
-			if (fileDirectory.StripByteCounts) {
-				 stripByteCountValues = fileDirectory.StripByteCounts.values;
-			} else {
-				console.log("Missing StripByteCounts!");
-				// Infer StripByteCounts, if possible.
-				if (numoffsetValues === 1) {
-					stripByteCountValues = [Math.ceil((this.imageWidth * this.imageLength * bitsPerPixel) / 8)];
-					} else {
-					throw Error("Cannot recover from missing StripByteCounts");
+		var FullPixelValues=[];
+		for (var j=0;j<this.imageLength;j++)
+			for (var i=0;i<this.imageWidth;i++)
+			{
+				var pixelValue = this.getPixelValueOnDemand(i,j);
+				for (var k=0;k<this.samplesPerPixel;k++)
+				{
+					FullPixelValues.push(pixelValue[k]);
 				}
 			}
-			
-			// If RowsPerStrip is missing, the whole image is in one strip.
-			if (fileDirectory.RowsPerStrip) {
-				 rowsPerStrip = fileDirectory.RowsPerStrip.values[0];
-			} else {
-				 rowsPerStrip = this.imageLength;
-			}
-		}
-			
-		else if (this.hasTileOffset())
-		{
-			 offsetValues = fileDirectory.TileOffsets.values;
-			  console.log("HasTileOffset : " + offsetValues); 
-			 numoffsetValues = offsetValues.length;
-			  console.log("HasTileOffset : " + numoffsetValues); 
-			 stripByteCountValues  = fileDirectory.TileByteCounts.values;
-			  console.log("TileByteCounts : " + stripByteCountValues); 
-			 var tileLength = fileDirectory.TileLength.values[0];
-			 var tileWidth = fileDirectory.TileWidth.values[0];
-			 console.log("HasTileOffset : " + tileLength, tileWidth);
-			
-			// photometricInterpretation != YCbCr  
-			var TilesAcross = (this.imageWidth + (tileWidth - 1)) / tileWidth;
-			var TilesDown = (this.imageLength + (tileLength - 1)) / tileLength;
-			var TilesInImage = TilesAcross * TilesDown;
-			if (this.getPlanarConfiguration()==2)
-				TilesInImage = TilesInImage * this.samplesPerPixel;
-			rowsPerStrip = tileLength;
-			//throw RangeError( 'Not Yet Implemented: Tiles organization' + TilesInImage);
-			blockWidth = this.tileWidth;
-		}
-			
-		var decompressionModule = this.getDecompressionModule();
-		
-		//--------------------------------------------------------------------------------------	
-		// The following code should be put in OnDemand function  	
-		// Load Strip / Tiles only On Demand 
-		//--------------------------------------------------------------------------------------	
-		
-		
-		// Loop through blocks and decompress as necessary.
-		for (var i = 0; i < numoffsetValues; i++) {
-			var stripOffset    = offsetValues[i];
-			var stripByteCount = stripByteCountValues[i];
-			this.addBlock(i, this.decodeBlock(stripOffset,stripByteCount,decompressionModule));	
-		}
-
-		var numStrips = this.blocks.length;
-
-		// XL 
-		// the following code works only for strip 
-		// should be adapted for Tile
-
-		var FullPixelValues = [];
-
-		console.log("row per strip "+ rowsPerStrip);
-		
-		
-		var imageLengthModRowsPerStrip = this.imageLength % rowsPerStrip;
-		var rowsInLastStrip = (imageLengthModRowsPerStrip === 0) ? rowsPerStrip : imageLengthModRowsPerStrip;
-
-		var numRowsInStrip = rowsPerStrip;
-		var numRowsInPreviousStrip = 0;
-
-		
-		var extraSamplesValues = [];
-		var numExtraSamples = 0;
-
-		if (fileDirectory.ExtraSamples) {
-			extraSamplesValues = fileDirectory.ExtraSamples.values;
-			numExtraSamples = extraSamplesValues.length;
-		}
-
-		if (fileDirectory.ColorMap) {
-			var colorMapValues = fileDirectory.ColorMap.values;
-			var colorMapSampleSize = Math.pow(2, this.sampleProperties[0].bitsPerSample);
-		}
-
-		var k=0;
-		// Loop through the blocks in the image.
-		for (var i = 0; i < numStrips; i++) {
-		
-			// The last strip may be short.
-			if ((i + 1) === numStrips) {
-				numRowsInStrip = rowsInLastStrip;
-			}
-
-			var numPixels = this.blocks[i].value.length;
-			var yPadding = numRowsInPreviousStrip * i;
-
-			// Loop through the rows in the strip.
-			for (var y = 0, j = 0; y < numRowsInStrip, j < numPixels; y++) {
-				// Loop through the pixels in the row.
-				for (var x = 0; x < blockWidth; x++, j++) {
-					var pixelSamples = this.blocks[i].value[j];
-					
-
-					//  Put the following  code to a PixelToCanvas function 
-					var red = 0;
-					var green = 0;
-					var blue = 0;
-					var opacity = 1.0;
-
-					if (numExtraSamples > 0) {
-						for (var k = 0; k < numExtraSamples; k++) {
-							if (extraSamplesValues[k] === 1 || extraSamplesValues[k] === 2) {
-								// Clamp opacity to the range [0,1].
-								opacity = pixelSamples[3 + k] / 256;
-
-								break;
-							}
-						}
-					}
-
-					switch (this.photometricInterpretation) {
-						// Bilevel or Grayscale
-						// WhiteIsZero
-						case 0:
-							if (this.sampleProperties[0].hasBytesPerSample) {
-								var invertValue = Math.pow(0x10, this.sampleProperties[0].bytesPerSample * 2);
-							}
-
-							// Invert samples.
-							pixelSamples.forEach(function(sample, index, samples) { samples[index] = invertValue - sample; });
-
-						// Bilevel or Grayscale
-						// BlackIsZero
-						case 1:
-							//red = green = blue = this.clampColorSample(pixelSamples[0], this.sampleProperties[0].bitsPerSample);
-							FullPixelValues[k] = pixelSamples[0];
-							k++;
-						break;
-
-						// RGB Full Color
-						case 2:
-							red = this.clampColorSample(pixelSamples[0], this.sampleProperties[0].bitsPerSample);
-							green = this.clampColorSample(pixelSamples[1], this.sampleProperties[1].bitsPerSample);
-							blue = this.clampColorSample(pixelSamples[2], this.sampleProperties[2].bitsPerSample);
-							FullPixelValues[k] = red;k++;
-							FullPixelValues[k] = green;k++;
-							FullPixelValues[k] = blue;k++;
-						
-						break;
-
-						// RGB Color Palette
-						case 3:
-							if (colorMapValues === undefined) {
-								throw Error("Palette image missing color map");
-							}
-
-							var colorMapIndex = pixelSamples[0];
-
-							red = this.clampColorSample(colorMapValues[colorMapIndex], 16);
-							green = this.clampColorSample(colorMapValues[colorMapSampleSize + colorMapIndex], 16);
-							blue = this.clampColorSample(colorMapValues[(2 * colorMapSampleSize) + colorMapIndex], 16);
-							FullPixelValues[k] = red;k++;
-							FullPixelValues[k] = green;k++;
-							FullPixelValues[k] = blue;k++;
-						break;
-
-						
-						// Unknown Photometric Interpretation
-						default:
-							throw RangeError( ' Photometric Interpretation Not Yet Implemented::', getPhotometricName(this.photometricInterpretation) );
-						break;
-					}	
-				}
-									
-			}
-
-			numRowsInPreviousStrip = numRowsInStrip;
-		}
-		
 		return FullPixelValues;
 	},
 	
+	/* getRGBAPixelValue
+	*  This function is the default one , you shoul use this function in order to draw the image into a canvas
+	*  If you have a multiband image , you should define how to combine bands in order to obtain a RGBA value
+	*/
+	getRGBAPixelValue: function(pixelSamples) {
+	
+		var red = 0;
+		var green = 0;
+		var blue = 0;
+		var opacity = 1.0;
+
+		
+		// To Understand this portion of code from Tiff-JS
+		if (numExtraSamples > 0) {
+			for (var k = 0; k < numExtraSamples; k++) {
+				if (extraSamplesValues[k] === 1 || extraSamplesValues[k] === 2) {
+					// Clamp opacity to the range [0,1].
+					opacity = pixelSamples[3 + k] / 256;
+
+					break;
+				}
+			}
+		}
+		//-------------------------------------------
+		
+		
+		var aRGBAPixelValue = [];
+		switch (this.photometricInterpretation) {
+			// Bilevel or Grayscale
+			// WhiteIsZero
+			case 0:
+				if (this.sampleProperties[0].hasBytesPerSample) {
+					var invertValue = Math.pow(0x10, this.sampleProperties[0].bytesPerSample * 2);
+				}
+
+				// Invert samples.
+				pixelSamples.forEach(function(sample, index, samples) { samples[index] = invertValue - sample; });
+
+			// Bilevel or Grayscale
+			// BlackIsZero
+			case 1:
+				red = green = blue = this.clampColorSample(pixelSamples[0], this.sampleProperties[0].bitsPerSample);
+			break;
+
+			// RGB Full Color
+			case 2:
+				if (this.samplesPerPixel==1)
+					red = green = blue = this.clampColorSample(pixelSamples[0], this.sampleProperties[0].bitsPerSample);
+				else if (this.samplesPerPixel>2)
+				{					
+					red = this.clampColorSample(pixelSamples[0], this.sampleProperties[0].bitsPerSample);
+					green = this.clampColorSample(pixelSamples[1], this.sampleProperties[1].bitsPerSample);
+					blue = this.clampColorSample(pixelSamples[2], this.sampleProperties[2].bitsPerSample);
+				}
+				// Assuming 4 => RGBA 
+				if (this.samplesPerPixel==4)
+				{
+				// Check this function A should be a value between 0->1 ? then devide pixelSamples[3]/this.sampleProperties[3].bitsPerSample
+					var maxValue = Math.pow(2, this.sampleProperties[0].bitsPerSample);
+					opacity = pixelSamples[3] / maxValue;
+				}
+			break;
+
+			// RGB Color Palette
+			case 3:
+				if (this.colorMapValues === undefined) {
+					throw Error("Palette image missing color map");
+				}
+
+				var colorMapIndex = pixelSamples[0];
+
+				red    = this.clampColorSample(this.colorMapValues[colorMapIndex], 16);
+				green = this.clampColorSample(this.colorMapValues[this.colorMapSampleSize + colorMapIndex], 16);
+				blue = this.clampColorSample(cthis.olorMapValues[(2 * this.colorMapSampleSize) + colorMapIndex], 16);
+			
+			break;
+
+			
+			// Unknown Photometric Interpretation
+			default:
+				throw RangeError( ' Photometric Interpretation Not Yet Implemented::', getPhotometricName(this.photometricInterpretation) );
+			break;
+		}
+		aRGBAPixelValue[0] = red;
+		aRGBAPixelValue[1] = green;
+		aRGBAPixelValue[2] = blue;
+		aRGBAPixelValue[3] = opacity;
+		return aRGBAPixelValue;
+	},
+	 
 	/* Test getPixelValueOnDemand
 	*  start implementation : 
 	*  1 -  check if the block is loaded  if not load the block
@@ -1275,8 +1198,7 @@ GeotiffParser.prototype = {
 		if(this.getPlanarConfiguration()!=1)
 			throw("Other Planar Configuration is not yet implemented"); 
 	
-    	var value = []
-		
+   	
 		var fileDirectory = this.fileDirectories[0];
 		var blockToLoad = 0;
 		var offsetValues = [];
@@ -1318,11 +1240,11 @@ GeotiffParser.prototype = {
 				}
 				blockInfo = this.decodeBlock(offsetValues[blockToLoad], blockByteCountValues[blockToLoad],decompressionModule);
 				this.addBlock(blockToLoad,blockInfo );	
-				console.log("Load block " , blockToLoad);
+				//console.log("Load block " , blockToLoad);
 			 }
 			 else
 			 {
-				console.log("Block is already load" , blockToLoad, idBlocks );
+				//console.log("Block is already load" , blockToLoad, idBlocks );
 				blockInfo = this.blocks[idBlocks];
 			 }
 			 
@@ -1347,11 +1269,11 @@ GeotiffParser.prototype = {
 				blockByteCountValues = fileDirectory.TileByteCounts.values;
 				blockInfo = this.decodeBlock(offsetValues[blockToLoad], blockByteCountValues[blockToLoad],decompressionModule);
 				this.addBlock(blockToLoad,blockInfo );	
-				console.log("Load block " , blockToLoad);
+				//console.log("Load block " , blockToLoad);
 			 }
 			 else
 			 {
-				console.log("Block is already load" , blockToLoad, idBlocks );
+				//console.log("Block is already load" , blockToLoad, idBlocks );
 				blockInfo = this.blocks[idBlocks];
 			 }
 			 
@@ -1359,14 +1281,8 @@ GeotiffParser.prototype = {
 			 yInBlock= y %tileLength ; 
 			 
 		}
-		var indice = this.samplesPerPixel*(yInBlock*blockWidth+xInBlock);
-		for (var i=0;i<this.samplesPerPixel;i++)
-			{
-				value.push(blockInfo.value[indice+i]);
-			}
-		
-		return value;
-		
+		var indice = yInBlock*blockWidth+xInBlock;
+		return blockInfo.value[indice];
 	
 	},
 	
