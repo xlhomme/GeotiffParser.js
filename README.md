@@ -5,10 +5,10 @@ A JavaScript-based parser for the GeoTIFF image format.
 This parser is based on the GPHemsley/tiff-js : canvas part has been removed, but GeoTiff geoKey has been added.
 Not all Tiff capacity has been coded. 
 
-What's handeld 
-Compression :   None and Packbits 
-Strips :  Supported
-Tiles  :  Not Yet Supported 
+What's supported 
+
+Compression     :   None and Packbits 
+Strips / Tiles  :  Supported
 Photometric Interpretation : RGB , GreyScale; BiLevel, RGB, RGB Color Palette
 
 
