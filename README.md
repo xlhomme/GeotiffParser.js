@@ -10,13 +10,20 @@ Compression     :   None and Packbits  <BR>
 Strips / Tiles  :  Supported <BR>
 Photometric Interpretation : RGB , GreyScale; BiLevel, RGB, RGB Color Palette<BR>
 Planar Configuration :  PLANARCONFIG_CONTIG  <BR>
+Size  : images should be not to big in order to be loaded properly.
+
 
 What's supported for the GeoTiff part <BR>
-GTIFTiepointTranslate is not implemented 
+ModelPixelScale : Supported <BR>
+ModelTransformation : Supported <BR>
+ModelTiepoint : GTIFTiepointTranslate is not implemented  <BR>
+
+
+
+
 
 Some part of the code is a port from LibGeoTiff 1.4.0 <BR>
 See  http://trac.osgeo.org/geotiff  for geoTiff information<BR>
-
 
 -----------------------------------------------------------
 
