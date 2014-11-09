@@ -1341,15 +1341,15 @@ GeotiffParser.prototype = {
 		mycanvas.height = ymax-xmin;
 		var pixrgba= [];
 		// Set a default fill style.	
-	//	ctx.fillStyle = this.makeRGBAFillValue(255, 255, 255, 0);
+		ctx.fillStyle = this.makeRGBAFillValue(255, 255, 255, 0);
 		for (var  y=ymin;y<ymax;y++)
-		{
+		{ 
 			for (var  x=xmin;x<xmax;x++)
 			{
 				var pixSample = this.getPixelValueOnDemand(x,y);
 				pixrgba= this.getRGBAPixelValue(pixSample);
 				//console.log(pixrgba);
-				ctx.fillStyle = this.makeRGBAFillValue(pixrgba[0], pixrgba[2],pixrgba[3],pixrgba[4]);
+				ctx.fillStyle = this.makeRGBAFillValue(pixrgba[0], pixrgba[1],pixrgba[2],pixrgba[3]);
 				//ctx.fillStyle = this.makeRGBAFillValue(0, 0,248,1);
 				ctx.fillRect(x-xmin, y-ymin, 1, 1);
 			}
