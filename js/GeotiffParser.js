@@ -865,7 +865,7 @@ GeotiffParser.prototype = {
 		
 		if (fileDirectory.ExtraSamples) {
 			this.extraSamplesValues = fileDirectory.ExtraSamples.values;
-			this.numExtraSamples = extraSamplesValues.length;
+			this.numExtraSamples = this.extraSamplesValues.length;
 		}
 
 		
@@ -1112,9 +1112,9 @@ GeotiffParser.prototype = {
 
 		
 		// To Understand this portion of code from Tiff-JS
-		if (numExtraSamples > 0) {
-			for (var k = 0; k < numExtraSamples; k++) {
-				if (extraSamplesValues[k] === 1 || extraSamplesValues[k] === 2) {
+		if (this.numExtraSamples > 0) {
+			for (var k = 0; k < this.numExtraSamples; k++) {
+				if (this.extraSamplesValues[k] === 1 || this.extraSamplesValues[k] === 2) {
 					// Clamp opacity to the range [0,1].
 					opacity = pixelSamples[3 + k] / 256;
 
@@ -1182,10 +1182,7 @@ GeotiffParser.prototype = {
 				throw RangeError( ' Photometric Interpretation Not Yet Implemented::', getPhotometricName(this.photometricInterpretation) );
 			break;
 		}
-		aRGBAPixelValue[0] = red;
-		aRGBAPixelValue[1] = green;
-		aRGBAPixelValue[2] = blue;
-		aRGBAPixelValue[3] = opacity;
+		aRGBAPixelValue = [red,green,blue,opacity];
 		return aRGBAPixelValue;
 	},
 	 
@@ -1302,11 +1299,11 @@ GeotiffParser.prototype = {
 		return CRSCode;
 	},
 
-/**
- * Get the pixel value 
- * Ex : var pixels = parse.parseTIFF(response);
- *      var pixel = parse.GetPixelValue(pixels,i,j);
- */		
+	/**
+	 * Get the pixel value 
+	 * Ex : var pixels = parse.parseTIFF(response);
+	 *      var pixel = parse.getPixelValue(pixels,i,j);
+	 */		
 	getPixelValue: function(buffer,x,y) {
 	
 	if(this.getPlanarConfiguration()!=1)
@@ -1324,6 +1321,42 @@ GeotiffParser.prototype = {
 		 }
 	return value;
     },
+
+	/**
+	 * This function display the tiff into a canvas 
+	 */		
+
+	toCanvas: function (canvas, xmin,ymin, xmax, ymax) {
+		
+		var mycanvas = canvas || document.createElement('canvas');
+
+		if (mycanvas.getContext == null) 
+		{
+			throw RangeError("No Context for canvas");
+			return ;
+		}
+		
+		var ctx = mycanvas.getContext("2d");
+		mycanvas.width = xmax-xmin;
+		mycanvas.height = ymax-xmin;
+		var pixrgba= [];
+		// Set a default fill style.	
+	//	ctx.fillStyle = this.makeRGBAFillValue(255, 255, 255, 0);
+		for (var  y=ymin;y<ymax;y++)
+		{
+			for (var  x=xmin;x<xmax;x++)
+			{
+				var pixSample = this.getPixelValueOnDemand(x,y);
+				pixrgba= this.getRGBAPixelValue(pixSample);
+				//console.log(pixrgba);
+				ctx.fillStyle = this.makeRGBAFillValue(pixrgba[0], pixrgba[2],pixrgba[3],pixrgba[4]);
+				//ctx.fillStyle = this.makeRGBAFillValue(0, 0,248,1);
+				ctx.fillRect(x-xmin, y-ymin, 1, 1);
+			}
+		}
+
+		return mycanvas;
+	},
 
 /**
  * See GeoTiff geo_trans.c
