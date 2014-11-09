@@ -46,7 +46,11 @@ function testGeotiffParser(data) {
 	var pixels = parser.loadPixels();
 	console.log("x=" + 10 + " y=" + 10 + " pixels="+ parser.getPixelValue(pixels,10,10) );*/
 	
-	// Test Flag_T24.tiff
+}
+// Test Flag_T24.tiff
+// SubTest for Flag_T24.tiff 
+function testFlag_T24_Color(parser) {
+
 	console.log(TestRGBAPixel(parser, 81,10,248,0,248,1));
 	console.log(TestRGBAPixel(parser, 112,10,0,248,248,1));
 	console.log(TestRGBAPixel(parser, 113,10,0,0,248,1));
@@ -54,8 +58,6 @@ function testGeotiffParser(data) {
 	console.log(TestRGBAPixel(parser, 82,11,0,248,0,1));
 	console.log(TestRGBAPixel(parser, 81,42,248,0,0,1));
 	console.log(TestRGBAPixel(parser, 117,49,248,0,248,1));
-	
-	
 }
 
 function LoadGeotiffParser(data,canvas) {
@@ -64,7 +66,7 @@ function LoadGeotiffParser(data,canvas) {
 
 	// parseHeader to read TIff / Geotiff parameters
 	parser.parseHeader(data);
-	var tiffCanvas = parser.toCanvas(canvas,0,0,124,124);
+	var tiffCanvas = parser.toCanvas(canvas,0,0,parser.imageWidth,parser.imageLength);
 			
 	return tiffCanvas;
 }
