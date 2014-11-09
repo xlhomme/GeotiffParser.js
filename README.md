@@ -10,7 +10,7 @@ Compression     :   None and Packbits  <BR>
 Strips / Tiles  :  Supported <BR>
 Photometric Interpretation : RGB , GreyScale; BiLevel, RGB, RGB Color Palette<BR>
 Planar Configuration :  PLANARCONFIG_CONTIG  <BR>
-Size  : images should be not to big in order to be loaded properly.
+Size  : images should not be to big in order to be loaded properly.
 
 
 What's supported for the GeoTiff part <BR>
