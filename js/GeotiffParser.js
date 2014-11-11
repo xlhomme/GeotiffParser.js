@@ -1598,7 +1598,7 @@ GeotiffParser.prototype = {
 
     det = gt_in[0] * gt_in[4] - gt_in[1] * gt_in[3];
 
-    if( fabs(det) < 0.000000000000001 )
+    if( Math.abs(det) < 0.000000000000001 )
         return [0 , gt_out];
 
     inv_det = 1.0 / det;
@@ -1687,7 +1687,7 @@ GeotiffParser.prototype = {
         gt_in[4] = transform[5];
         gt_in[5] = transform[7];
 
-		var result = inv_geotransform( gt_in );
+		var result = this.inv_geotransform( gt_in );
 		
         if( !result[0])
             res = [0 , x , y];

@@ -41,6 +41,17 @@
 	 */
 	 function drawImage(parser,in_proj,in_bbox,in_delta,in_context) {
 
+		// Get some Information form HTML document ---> use MVVM instead 
+		var useMinMax = false; 
+		var MinMaxCb = document.getElementById( "MixMaxCb" );
+		var MinMaxValue = [];
+		if (MinMaxCb != null && MinMaxCb != 'undefined' && MinMaxCb.checked == true)
+		 {
+			useMinMax = true;
+			MinMaxValue[0]  = document.getElementById( "MinValueOfMinMax" ).value;
+			MinMaxValue[1]  = document.getElementById( "MaxValueOfMinMax" ).value;
+		 }
+	 
 		var points = in_bbox.coord;
 		if (in_bbox.WKID !=  in_proj) 
 			{
@@ -85,7 +96,10 @@
 					var pixSample=parser.getPixelValueOnDemand(imageCoord[1],imageCoord[2]);
 					if (pixSample != null)
 						{
-							pixrgba= parser.getMinMaxPixelValue(pixSample,600,2000);
+							if( useMinMax == true )
+								pixrgba= parser.getMinMaxPixelValue(pixSample,MinMaxValue[0],MinMaxValue[1]);
+							else
+								pixrgba= parser.getRGBAPixelValue(pixSample);
 							in_context.fillStyle = parser.makeRGBAFillValue(pixrgba[0], pixrgba[1], pixrgba[2],opacity);
 						}
 					else

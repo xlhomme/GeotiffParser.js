@@ -34,7 +34,6 @@
 
 			addGeotiffLayer(e.target.result);
 	
-			
 		};
 
 		reader.readAsArrayBuffer( file );
@@ -45,6 +44,9 @@
 
 <form name="tiff-parser" method="post" enctype="multipart/form-data" style="margin: 2% auto auto; ">
 <input type="file" name="tiff-file" id="tiff-file" accept="image/tiff" required onchange="loadFile();" />
+<input type="checkbox" name="MixMaxCb" id="MixMaxCb" value="MixMax"> 
+<label>Min:</label><input type="number" id="MinValueOfMinMax" name="min" value="0">
+<label>Max:</label><input type="number" id="MaxValueOfMinMax" name="max" value="1000">
 </form>
 <div id="map" class="map" > </div>
 
