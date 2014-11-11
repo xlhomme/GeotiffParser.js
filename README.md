@@ -32,4 +32,7 @@ Why ParseGeoTiff.js ?
 My attempt is to parse GeoTiff files coming from a WCS server (I'm using a Geoserver) in order to do some computation like obtaining the elevation along a path. With GeoTiff client side you could also change dynamically the rendering function. 
 
 
+-----------------------------------------------------------
+GeotiffParser in action with OpenLayers 3 :
 
+<img src="img\ol3Geotiff.jpg" alt="Geotiff in action" >
