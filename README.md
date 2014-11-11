@@ -35,4 +35,4 @@ My attempt is to parse GeoTiff files coming from a WCS server (I'm using a Geose
 -----------------------------------------------------------
 GeotiffParser in action with OpenLayers 3 :
 
-<img src="img\ol3Geotiff.jpg" alt="Geotiff in action" >
+<img src="img/ol3Geotiff.jpg" alt="Geotiff in action"  >
