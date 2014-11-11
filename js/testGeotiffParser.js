@@ -36,9 +36,9 @@ function testGeotiffParser(data) {
 	
 	}
 	
-	console.log("Try first part of the function getPixelValueOnDemand " );
-	var pix=parser.getPixelValueOnDemand(123,0);
-	console.log("x=" + 123 + " y=" + 0 + " pixels="+ pix  +" " + parser.getRGBAPixelValue(pix));
+	//console.log("Try first part of the function getPixelValueOnDemand " );
+	//var pix=parser.getPixelValueOnDemand(123,0);
+	//console.log("x=" + 123 + " y=" + 0 + " pixels="+ pix  +" " + parser.getRGBAPixelValue(pix));
 	/*//console.log("x=" + 11 + " y=" + 10 + " pixels="+ parser.getPixelValueOnDemand(11,10));
 	console.log("x=" + 120 + " y=" + 2 + " pixels="+ parser.getPixelValueOnDemand(120,2));
 	// Get the buffer of pixels
@@ -66,7 +66,7 @@ function LoadGeotiffParser(data,canvas) {
 
 	// parseHeader to read TIff / Geotiff parameters
 	parser.parseHeader(data);
-	var tiffCanvas = parser.toCanvas(canvas,0,0,parser.imageWidth,parser.imageLength);
+	var tiffCanvas = parser.toCanvas(canvas,0,0,parser.imageWidth,parser.imageLength,600,2000);
 			
 	return tiffCanvas;
 }

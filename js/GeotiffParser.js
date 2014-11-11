@@ -512,7 +512,13 @@ GeotiffParser.prototype = {
 	clampColorSample: function(colorSample, bitsPerSample) {
 		var multiplier = Math.pow(2, 8 - bitsPerSample);
 
-		return Math.floor((colorSample * multiplier) + (multiplier - 1));
+		return Math.floor((colorSample * multiplier) + (1-multiplier));
+	},
+	
+	clampAffineColorSample: function(colorSample, bitsPerSample,vmin,vmax ) {
+		var multiplier = Math.pow(2, 8 ) / vmax;
+
+		return Math.floor((colorSample-vmin) * multiplier );
 	},
 
 	/* from Tiff-js  */
@@ -890,6 +896,7 @@ GeotiffParser.prototype = {
 		switch (this.compression) {
 			// Uncompressed
 			case 1:
+			case 5:
 				var bitOffset = 0;
 				var hasBytesPerPixel = false;
 				if ((this.bitsPerPixel % 8) === 0) {
@@ -928,7 +935,14 @@ GeotiffParser.prototype = {
 
 					decodedBlock.push(pixel);
 				}
+				if (this.compression == 5) // LZW
+				{
+					var decompressed = LZString.decompressFromUint8Array(decodedBlock);
+					decodedBlock  = decompressed;					
+				}
+				
 			break;
+			
 
 			// Deflate 
 			// Code not yes validate 
@@ -1172,7 +1186,94 @@ GeotiffParser.prototype = {
 
 				red    = this.clampColorSample(this.colorMapValues[colorMapIndex], 16);
 				green = this.clampColorSample(this.colorMapValues[this.colorMapSampleSize + colorMapIndex], 16);
-				blue = this.clampColorSample(cthis.olorMapValues[(2 * this.colorMapSampleSize) + colorMapIndex], 16);
+				blue = this.clampColorSample(this.colorMapValues[(2 * this.colorMapSampleSize) + colorMapIndex], 16);
+			
+			break;
+
+			
+			// Unknown Photometric Interpretation
+			default:
+				throw RangeError( ' Photometric Interpretation Not Yet Implemented::', getPhotometricName(this.photometricInterpretation) );
+			break;
+		}
+		aRGBAPixelValue = [red,green,blue,opacity];
+		return aRGBAPixelValue;
+	},
+	
+	/* getRGBAPixelValue
+	*  This function is the default one , you shoul use this function in order to draw the image into a canvas
+	*  If you have a multiband image , you should define how to combine bands in order to obtain a RGBA value
+	*/
+	getMinMaxPixelValue: function(pixelSamples,vmin,vmax) {
+	
+		var red = 0;
+		var green = 0;
+		var blue = 0;
+		var opacity = 1.0;
+
+		
+		// To Understand this portion of code from Tiff-JS
+		if (this.numExtraSamples > 0) {
+			for (var k = 0; k < this.numExtraSamples; k++) {
+				if (this.extraSamplesValues[k] === 1 || this.extraSamplesValues[k] === 2) {
+					// Clamp opacity to the range [0,1].
+					opacity = pixelSamples[3 + k] / 256;
+
+					break;
+				}
+			}
+		}
+		//-------------------------------------------
+		
+		
+		var aRGBAPixelValue = [];
+		switch (this.photometricInterpretation) {
+			// Bilevel or Grayscale
+			// WhiteIsZero
+			case 0:
+				if (this.sampleProperties[0].hasBytesPerSample) {
+					var invertValue = Math.pow(0x10, this.sampleProperties[0].bytesPerSample * 2);
+				}
+
+				// Invert samples.
+				pixelSamples.forEach(function(sample, index, samples) { samples[index] = invertValue - sample; });
+
+			// Bilevel or Grayscale
+			// BlackIsZero
+			case 1:
+				red = green = blue = this.clampAffineColorSample(pixelSamples[0], this.sampleProperties[0].bitsPerSample,vmin,vmax);
+			break;
+
+			// RGB Full Color
+			case 2:
+				if (this.samplesPerPixel==1)
+					red = green = blue = this.clampAffineColorSample(pixelSamples[0], this.sampleProperties[0].bitsPerSample,vmin,vmax);
+				else if (this.samplesPerPixel>2)
+				{					
+					red = this.clampAffineColorSample(pixelSamples[0], this.sampleProperties[0].bitsPerSample,vmin,vmax);
+					green = this.clampAffineColorSample(pixelSamples[1], this.sampleProperties[1].bitsPerSample,vmin,vmax);
+					blue = this.clampAffineColorSample(pixelSamples[2], this.sampleProperties[2].bitsPerSample,vmin,vmax);
+				}
+				// Assuming 4 => RGBA 
+				if (this.samplesPerPixel==4)
+				{
+				// Check this function A should be a value between 0->1 ? then devide pixelSamples[3]/this.sampleProperties[3].bitsPerSample
+					var maxValue = Math.pow(2, this.sampleProperties[0].bitsPerSample);
+					opacity = pixelSamples[3] / maxValue;
+				}
+			break;
+
+			// RGB Color Palette
+			case 3:
+				if (this.colorMapValues === undefined) {
+					throw Error("Palette image missing color map");
+				}
+
+				var colorMapIndex = pixelSamples[0];
+
+				red    = this.clampAffineColorSample(this.colorMapValues[colorMapIndex], 16,vmin,vmax);
+				green = this.clampAffineColorSample(this.colorMapValues[this.colorMapSampleSize + colorMapIndex], 16,vmin,vmax);
+				blue = this.clampAffineColorSample(this.colorMapValues[(2 * this.colorMapSampleSize) + colorMapIndex], 16,vmin,vmax);
 			
 			break;
 
@@ -1196,6 +1297,12 @@ GeotiffParser.prototype = {
 			throw("Other Planar Configuration is not yet implemented"); 
 	
    	
+		if (this.isPixelArea())
+		{
+			x= Math.floor(x);
+			y= Math.floor(y);
+		}
+		
 		var fileDirectory = this.fileDirectories[0];
 		var blockToLoad = 0;
 		var offsetValues = [];
@@ -1298,6 +1405,17 @@ GeotiffParser.prototype = {
 			CRSCode =this.geoKeys['ProjectedCSTypeGeoKey'].value ;
 		return CRSCode;
 	},
+	
+	/** isPixelArea */
+	isPixelArea: function() {
+		var CRSCode = 0;
+		if (this.geoKeys.hasOwnProperty('GTRasterTypeGeoKey') == false)
+			return true; // default 
+		if (this.getRasterTypeName( this.geoKeys.GTRasterTypeGeoKey.value )=='RasterPixelIsArea')
+			return true; 
+		
+		return false;
+	},
 
 	/**
 	 * Get the pixel value 
@@ -1326,7 +1444,10 @@ GeotiffParser.prototype = {
 	 * This function display the tiff into a canvas 
 	 */		
 
-	toCanvas: function (canvas, xmin,ymin, xmax, ymax) {
+	toCanvas: function (canvas, xmin,ymin, xmax, ymax,vmin,vmax) {
+		
+		
+	
 		
 		var mycanvas = canvas || document.createElement('canvas');
 
@@ -1347,8 +1468,15 @@ GeotiffParser.prototype = {
 			for (var  x=xmin;x<xmax;x++)
 			{
 				var pixSample = this.getPixelValueOnDemand(x,y);
-				pixrgba= this.getRGBAPixelValue(pixSample);
-				//console.log(pixrgba);
+				if (pixSample!= 'undefined')
+				{
+					if (vmin!='undefined' && vmax!='undefined')
+						pixrgba= this.getMinMaxPixelValue(pixSample,vmin,vmax);
+					else
+						pixrgba= this.getRGBAPixelValue(pixSample);
+				}
+				else
+					pixrgba = [255,0,0,1];
 				ctx.fillStyle = this.makeRGBAFillValue(pixrgba[0], pixrgba[1],pixrgba[2],pixrgba[3]);
 				//ctx.fillStyle = this.makeRGBAFillValue(0, 0,248,1);
 				ctx.fillRect(x-xmin, y-ymin, 1, 1);
