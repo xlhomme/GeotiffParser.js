@@ -659,24 +659,44 @@ GeotiffParser.prototype = {
 			}
 			else if (this.getFieldTagName(ent_location)=="GeoKeyDirectory")
 			{		
-				console.log(this.getFieldTagName(ent_location) );
 				console.log("ent_key =" + this.getGeoKeyName(ent_key));
 				console.log("ent_count =" + ent_count );
-		
+				console.log("ent_val_offset =" + ent_val_offset );
+				console.log("GeoKeyDirectory =" );
 			
 			}
 			else if (this.getFieldTagName(ent_location)=="GeoDoubleParams")
 			{
-				console.log(this.getFieldTagName(ent_location) );
+			/*
 				console.log("ent_key =" + this.getGeoKeyName(ent_key));
 				console.log("ent_count =" + ent_count );		
+				console.log("ent_val_offset =" + ent_val_offset );
+				console.log("GeoDoubleParams ="  +GeoDoubleParams[ent_val_offset]);
+				*/
+				var GeoDoubleParams = fileDirectory.GeoDoubleParams.values;
+				value = GeoDoubleParams[ent_val_offset];
+				
 			}
 			else if (this.getFieldTagName(ent_location)=="GeoAsciiParams")
 			{	
-				console.log(this.getFieldTagName(ent_location) );
-				console.log("ent_key =" + this.getGeoKeyName(ent_key));
+				var str= "";
+				/*console.log("ent_key =" + this.getGeoKeyName(ent_key));
 				console.log("ent_count =" + ent_count );
-						
+				console.log("ent_val_offset =" + ent_val_offset );*/
+				var GeoAsciiParams = fileDirectory.GeoAsciiParams.values;
+				if (ent_val_offset!='undefined' && 
+					ent_count!='undefined' && 
+					ent_count>0 &&
+					ent_val_offset <= ent_count-1) 
+					{
+						for (var j=ent_val_offset;j<ent_count-1;j++)
+							str+=GeoAsciiParams[j];
+						if (GeoAsciiParams[ent_count-1] != '|')
+							str+=GeoAsciiParams[ent_count-1];
+					 
+					}
+				value=str;
+					
 			}
 				
 			geoKeyFields[this.getGeoKeyName(ent_key)] = {  'value': value };
@@ -1403,7 +1423,56 @@ GeotiffParser.prototype = {
 		else if (this.getModelTypeName( this.geoKeys.GTModelTypeGeoKey.value )=='ModelTypeProjected'  &&
 				 this.geoKeys.hasOwnProperty('ProjectedCSTypeGeoKey'))
 			CRSCode =this.geoKeys['ProjectedCSTypeGeoKey'].value ;
+		else if (this.getModelTypeName( this.geoKeys.GTModelTypeGeoKey.value )=='user-defined')
+		{
+			if (this.geoKeys.hasOwnProperty('ProjectedCSTypeGeoKey'))
+				CRSCode =this.geoKeys['ProjectedCSTypeGeoKey'].value 
+			else
+				if (this.geoKeys.hasOwnProperty('GeographicTypeGeoKey'))
+					CRSCode =this.geoKeys['GeographicTypeGeoKey'].value ;
+				else	
+					// Littel Hack for 3857
+					if (this.geoKeys.hasOwnProperty('GTCitationGeoKey') && 
+					this.geoKeys['GTCitationGeoKey'].value.search("WGS_1984_Web_Mercator_Auxiliary_Sphere")!=-1)
+					CRSCode = 3857;
+				else
+					this.consoleCRSProperty();
+		
+		}
+			
+	
 		return CRSCode;
+	},
+	
+	/** get the CRS code */
+	consoleCRSProperty: function() {
+			//GeoTIFF Configuration GeoKeys
+			var Configuration_GeoKeys = [1024,1026];
+			// Geographic CS Parameter GeoKeys
+			var GeographicCS_GeoKeys = [2048,2061];
+			// Projected CS Parameter GeoKeys
+			var ProjectedCS_GeoKeys = [3072,3073];
+			//Projection Definition GeoKeys
+			var Projection_GeoKeys = [3074,3094];
+			//Vertical CS Parameter Keys
+			var Vertical_GeoKeys = [4096,4099];
+			this.test_consoleGeoKeys("GeoTIFF Configuration GeoKeys",Configuration_GeoKeys);
+			this.test_consoleGeoKeys("Geographic CS Parameter GeoKeys",GeographicCS_GeoKeys);
+			this.test_consoleGeoKeys("Projected CS Parameter GeoKeys",ProjectedCS_GeoKeys);
+			this.test_consoleGeoKeys("Projection Definition GeoKeys",Projection_GeoKeys);
+			this.test_consoleGeoKeys("Vertical CS Parameter Keys",Vertical_GeoKeys);
+		
+	},
+	
+	/** show consoleGeokey  */
+	test_consoleGeoKeys: function(Label,GeoKeyTab) {
+		console.log(Label);
+		for (var i=GeoKeyTab[0];i<=GeoKeyTab[1];i++)
+			{
+				var geoKeyName = this.getGeoKeyName( i );
+				if (this.geoKeys.hasOwnProperty(geoKeyName))
+					console.log(geoKeyName + " " + this.geoKeys[geoKeyName].value );
+			}
 	},
 	
 	/** isPixelArea */
