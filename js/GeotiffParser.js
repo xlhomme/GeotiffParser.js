@@ -62,6 +62,60 @@ GeotiffParser.prototype = {
 		return true;
 	},
 	
+	/* Translate LinearCode to string  */
+	getLinearUnitsName: function (linearUnitsCode) {
+		var LinearUnitsName;
+		switch(linearUnitsCode) {
+		 case 0: LinearUnitsName= 'undefined'; break;
+		 case 9001: LinearUnitsName= 'Linear_Meter'; break;
+		 case 9002: LinearUnitsName= 'Linear_Foot'; break;
+		 case 9003: LinearUnitsName= 'Linear_Foot_US_Survey'; break;
+		 case 9004: LinearUnitsName= 'Linear_Foot_Modified_American'; break;
+		 case 9005: LinearUnitsName= 'Linear_Foot_Clarke '; break;
+		 case 9006: LinearUnitsName= 'Linear_Foot_Indian '; break;
+		 case 9007: LinearUnitsName= 'Linear_Link '; break;
+		 case 9008: LinearUnitsName= 'Linear_Link_Benoit '; break;
+		 case 9009: LinearUnitsName= 'Linear_Link_Sears'; break;
+		 case 9010: LinearUnitsName= 'Linear_Chain_Benoit'; break;
+		 case 9011: LinearUnitsName= 'Linear_Chain_Sears'; break;
+		 case 9012: LinearUnitsName= 'Linear_Yard_Sears'; break;
+		 case 9013: LinearUnitsName= 'Linear_Yard_Indian'; break;
+		 case 9014: LinearUnitsName= 'Linear_Fathom'; break;
+		 case 9015: LinearUnitsName= 'user-Linear_Mile_International_Nautical'; break;
+		 default:
+				    if (linearUnitsCode>=9000 && linearUnitsCode<=9099) LinearUnitsName= 'EPSG Linear Units';
+					else if (linearUnitsCode>=9100 && linearUnitsCode<=9199) LinearUnitsName= 'EPSG Angular Units';
+					else if (linearUnitsCode=32767) LinearUnitsName= 'user-defined unit';
+					else if (linearUnitsCode>32767) LinearUnitsName= 'Private User Implementations';
+			break;
+		}		
+		return LinearUnitsName;
+	},
+	
+	/* Translate LinearCode to string  */
+	getAngularUnitsName: function (angularUnitsCode) {
+		var AngularUnitsName;
+		switch(angularUnitsCode) {
+		 case 0: AngularUnitsName= 'undefined'; break;
+		 case 9001: AngularUnitsName= 'Angular_Radian'; break;
+		 case 9002: AngularUnitsName= 'Angular_Degree'; break;
+		 case 9003: AngularUnitsName= 'Angular_Arc_Minute'; break;
+		 case 9004: AngularUnitsName= 'Angular_Arc_Second'; break;
+		 case 9005: AngularUnitsName= 'Angular_Grad'; break;
+		 case 9006: AngularUnitsName= 'Angular_Gon'; break;
+		 case 9007: AngularUnitsName= 'Angular_DMS'; break;
+		 case 9008: AngularUnitsName= 'Angular_DMS_Hemisphere'; break;
+		 default:
+				    if (angularUnitsCode>=9000 && angularUnitsCode<=9099) AngularUnitsName= 'EPSG Linear Units';
+					else if (angularUnitsCode>=9100 && angularUnitsCode<=9199) AngularUnitsName= 'EPSG Angular Units';
+					else if (angularUnitsCode=32767) AngularUnitsName= 'user-defined unit';
+					else if (angularUnitsCode>32767) AngularUnitsName= 'Private User Implementations';
+			break;
+		}		
+		return AngularUnitsName;
+	},
+	
+	
 	/* Translate modelTypeCode to string  */
 	getModelTypeName: function (modelTypeCode) {
 		var modelTypeName;
@@ -751,24 +805,9 @@ GeotiffParser.prototype = {
 		console.log("hdr_rev_minor =" + fileDirectory.GeoKeyDirectory + " " +hdr_rev_minor );
 		console.log("hdr_num_keys =" + fileDirectory.GeoKeyDirectory + " " +hdr_num_keys );
 		
-		if (typeof(fileDirectory.GeoDoubleParams) != 'undefined' && fileDirectory.GeoDoubleParams != null &&
-			typeof(fileDirectory.GeoDoubleParams.values) != 'undefined' && fileDirectory.GeoDoubleParams.values != null)
-				{
-					var GeoDoubleParams = fileDirectory.GeoDoubleParams.values;
-					console.log("GeoDoubleParams ="  +GeoDoubleParams);
-				}
+		this.consoleCRSProperty();
 		
-		if (typeof(fileDirectory.GeoAsciiParams) != 'undefined' && fileDirectory.GeoAsciiParams != null &&
-			typeof(fileDirectory.GeoAsciiParams.values) != 'undefined' && fileDirectory.GeoAsciiParams.values != null)
-				{
-					var GeoAsciiParams = fileDirectory.GeoAsciiParams.values;
-					console.log("GeoAsciiParams ="  +GeoAsciiParams);
-				}
-		
-		for (var iKey =0 ; iKey < hdr_num_keys ; iKey++)
-		{		
-			this.readKey(iKey);
-		}
+		console.log("pixelSize =" + this.getPixelSize());
 	},
 	
 	/* Test */
@@ -789,55 +828,8 @@ GeotiffParser.prototype = {
 			console.log(" PCSToImage failure"  );	
 	},
 		
-	
-	/* Test
-	* Given KeyEntry, read in the GeoKey value location and set up
-	*  the Key structure, returning 0 if failure.
-	*/
-	readKey: function (iKey) {
 		
-		var fileDirectory = this.fileDirectories[0];
-
-		/* GeoKey ID            */
-		var ent_key = 	fileDirectory.GeoKeyDirectory.values[4+ iKey*4];
-		/* TIFF Tag ID or 0     */
-		var ent_location = 	fileDirectory.GeoKeyDirectory.values[5+ iKey*4];
-		/* GeoKey value count   */
-		var ent_count = 	fileDirectory.GeoKeyDirectory.values[6+ iKey*4];
-		/* value or tag offset  */
-		var ent_val_offset = 	fileDirectory.GeoKeyDirectory.values[7+ iKey*4];
-		console.log("ent_key =" + this.getGeoKeyName(ent_key));
-		console.log("ent_count =" + ent_count );
 		
-		if (ent_location==0)
-		{
-			 /* store value into data value */
-			  var value = ent_val_offset;
-			  console.log("ent_val_offset =" + value );
-		
-		}
-		else if (this.getFieldTagName(ent_location)=="GeoKeyDirectory")
-		{
-		
-		console.log(this.getFieldTagName(ent_location) );
-			
-		}
-		else if (this.getFieldTagName(ent_location)=="GeoDoubleParams")
-		{
-		console.log(this.getFieldTagName(ent_location) );
-		
-		}
-		else if (this.getFieldTagName(ent_location)=="GeoAsciiParams")
-		  {	
-		  console.log(this.getFieldTagName(ent_location) );
-		 
-			}
-			else 
-				return 0; 
-	
-	
-		return 1; /* success */
-	},
 
 	/*
 	 * parse Header
@@ -1410,7 +1402,7 @@ GeotiffParser.prototype = {
 	
 	},
 	
-
+	
 	/** get the CRS code */
 	getCRSCode: function() {
 		var CRSCode = 0;
@@ -1555,6 +1547,25 @@ GeotiffParser.prototype = {
 		return mycanvas;
 	},
 
+	/** Compute or retreive a PixelScale / Resolution or CellSize */
+	getPixelSize : function() 
+	{
+		 var pixel_scale = ['undefined','undefined'];
+		 var fileDirectory = this.fileDirectories[0];
+		 if (typeof(fileDirectory.ModelPixelScale) != 'undefined' && fileDirectory.ModelPixelScale != null &&
+			typeof(fileDirectory.ModelPixelScale.values) != 'undefined' && fileDirectory.ModelPixelScale.values != null)
+				return fileDirectory.ModelPixelScale.values;
+	
+		var p0=this.ImageToPCS(0,0);
+		var p1=this.ImageToPCS(1,0);
+		var p2=this.ImageToPCS(0,1);
+		if (p0[0]==0 || p1[0]==0 || p2[0]==0)
+		return pixel_scale;
+		
+		var c_pixel_scale = [p1[1]-p0[1],p2[2]-p0[2]];
+		return c_pixel_scale;
+	},
+	
 /**
  * See GeoTiff geo_trans.c
  */	
@@ -1565,6 +1576,8 @@ GeotiffParser.prototype = {
        polynomial regression here! */
     return [0 , x , y];
     },
+	
+	
 	
 /**
  * Translate a pixel/line coordinates to projection coordinate .
