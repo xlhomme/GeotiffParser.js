@@ -3,32 +3,32 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. 
  *
  * modified source code from GPHemsley/tiff-js
-  * use pako for inflating when compression == deflate 
+ * use pako for inflating when compression == deflate 
  */
 
 "use strict";
 
-
 function GeotiffParser() {
 	this.tiffDataView = undefined;
 	this.littleEndian = undefined;
-	this.imageWidth  = undefined;
+	this.imageWidth = undefined;
 	this.imageLength = undefined;
 	this.bitsPerPixel = undefined;
 	this.samplesPerPixel = undefined;
-	this.photometricInterpretation= undefined;
-	this.compression= undefined;
+	this.photometricInterpretation = undefined;
+	this.compression = undefined;
 	this.fileDirectories = [];
 	this.sampleProperties = [];
 	this.geoKeys = [];
 	this.blocks = [];
 	this.colorMapValues = [];
 	this.colorMapSampleSize = undefined;
-	
+	this.isPixelArea = 0;
+	this.planarConfiguration = 1; 
 	this.extraSamplesValues = [];
 	this.numExtraSamples = 0;
 
-};
+}
 
 /* GeotiffParser */ 
 GeotiffParser.prototype = {
@@ -56,7 +56,6 @@ GeotiffParser.prototype = {
 		// Check for towel.
 		if (this.getBytes(2, 2) !== 42) {
 			throw RangeError("You forgot your towel!");
-			return false;
 		}
 
 		return true;
@@ -66,22 +65,54 @@ GeotiffParser.prototype = {
 	getLinearUnitsName: function (linearUnitsCode) {
 		var LinearUnitsName;
 		switch(linearUnitsCode) {
-		 case 0: LinearUnitsName= 'undefined'; break;
-		 case 9001: LinearUnitsName= 'Linear_Meter'; break;
-		 case 9002: LinearUnitsName= 'Linear_Foot'; break;
-		 case 9003: LinearUnitsName= 'Linear_Foot_US_Survey'; break;
-		 case 9004: LinearUnitsName= 'Linear_Foot_Modified_American'; break;
-		 case 9005: LinearUnitsName= 'Linear_Foot_Clarke '; break;
-		 case 9006: LinearUnitsName= 'Linear_Foot_Indian '; break;
-		 case 9007: LinearUnitsName= 'Linear_Link '; break;
-		 case 9008: LinearUnitsName= 'Linear_Link_Benoit '; break;
-		 case 9009: LinearUnitsName= 'Linear_Link_Sears'; break;
-		 case 9010: LinearUnitsName= 'Linear_Chain_Benoit'; break;
-		 case 9011: LinearUnitsName= 'Linear_Chain_Sears'; break;
-		 case 9012: LinearUnitsName= 'Linear_Yard_Sears'; break;
-		 case 9013: LinearUnitsName= 'Linear_Yard_Indian'; break;
-		 case 9014: LinearUnitsName= 'Linear_Fathom'; break;
-		 case 9015: LinearUnitsName= 'user-Linear_Mile_International_Nautical'; break;
+            case 0:
+                LinearUnitsName = 'undefined';
+                break;
+            case 9001:
+                LinearUnitsName = 'Linear_Meter';
+                break;
+            case 9002:
+                LinearUnitsName = 'Linear_Foot';
+                break;
+            case 9003:
+                LinearUnitsName = 'Linear_Foot_US_Survey';
+                break;
+            case 9004:
+                LinearUnitsName = 'Linear_Foot_Modified_American';
+                break;
+            case 9005:
+                LinearUnitsName = 'Linear_Foot_Clarke ';
+                break;
+            case 9006:
+                LinearUnitsName = 'Linear_Foot_Indian ';
+                break;
+            case 9007:
+                LinearUnitsName = 'Linear_Link ';
+                break;
+            case 9008:
+                LinearUnitsName = 'Linear_Link_Benoit ';
+                break;
+            case 9009:
+                LinearUnitsName = 'Linear_Link_Sears';
+                break;
+            case 9010:
+                LinearUnitsName = 'Linear_Chain_Benoit';
+                break;
+            case 9011:
+                LinearUnitsName = 'Linear_Chain_Sears';
+                break;
+            case 9012:
+                LinearUnitsName = 'Linear_Yard_Sears';
+                break;
+            case 9013:
+                LinearUnitsName = 'Linear_Yard_Indian';
+                break;
+            case 9014:
+                LinearUnitsName = 'Linear_Fathom';
+                break;
+            case 9015:
+                LinearUnitsName = 'user-Linear_Mile_International_Nautical';
+                break;
 		 default:
 				    if (linearUnitsCode>=9000 && linearUnitsCode<=9099) LinearUnitsName= 'EPSG Linear Units';
 					else if (linearUnitsCode>=9100 && linearUnitsCode<=9199) LinearUnitsName= 'EPSG Angular Units';
@@ -96,15 +127,33 @@ GeotiffParser.prototype = {
 	getAngularUnitsName: function (angularUnitsCode) {
 		var AngularUnitsName;
 		switch(angularUnitsCode) {
-		 case 0: AngularUnitsName= 'undefined'; break;
-		 case 9001: AngularUnitsName= 'Angular_Radian'; break;
-		 case 9002: AngularUnitsName= 'Angular_Degree'; break;
-		 case 9003: AngularUnitsName= 'Angular_Arc_Minute'; break;
-		 case 9004: AngularUnitsName= 'Angular_Arc_Second'; break;
-		 case 9005: AngularUnitsName= 'Angular_Grad'; break;
-		 case 9006: AngularUnitsName= 'Angular_Gon'; break;
-		 case 9007: AngularUnitsName= 'Angular_DMS'; break;
-		 case 9008: AngularUnitsName= 'Angular_DMS_Hemisphere'; break;
+            case 0:
+                AngularUnitsName = 'undefined';
+                break;
+            case 9001:
+                AngularUnitsName = 'Angular_Radian';
+                break;
+            case 9002:
+                AngularUnitsName = 'Angular_Degree';
+                break;
+            case 9003:
+                AngularUnitsName = 'Angular_Arc_Minute';
+                break;
+            case 9004:
+                AngularUnitsName = 'Angular_Arc_Second';
+                break;
+            case 9005:
+                AngularUnitsName = 'Angular_Grad';
+                break;
+            case 9006:
+                AngularUnitsName = 'Angular_Gon';
+                break;
+            case 9007:
+                AngularUnitsName = 'Angular_DMS';
+                break;
+            case 9008:
+                AngularUnitsName = 'Angular_DMS_Hemisphere';
+                break;
 		 default:
 				    if (angularUnitsCode>=9000 && angularUnitsCode<=9099) AngularUnitsName= 'EPSG Linear Units';
 					else if (angularUnitsCode>=9100 && angularUnitsCode<=9199) AngularUnitsName= 'EPSG Angular Units';
@@ -115,22 +164,30 @@ GeotiffParser.prototype = {
 		return AngularUnitsName;
 	},
 	
-	
 	/* Translate modelTypeCode to string  */
 	getModelTypeName: function (modelTypeCode) {
 		var modelTypeName;
 		switch(modelTypeCode) {
-		 case 0: modelTypeName= 'undefined'; break;
-		 case 1: modelTypeName= 'ModelTypeProjected'; break;
-		 case 2: modelTypeName= 'ModelTypeGeographic'; break;
-		 case 3: modelTypeName= 'ModelTypeGeocentric'; break;
-		 case 32767: modelTypeName= 'user-defined'; break;
+            case 0:
+                modelTypeName = 'undefined';
+                break;
+            case 1:
+                modelTypeName = 'ModelTypeProjected';
+                break;
+            case 2:
+                modelTypeName = 'ModelTypeGeographic';
+                break;
+            case 3:
+                modelTypeName = 'ModelTypeGeocentric';
+                break;
+            case 32767:
+                modelTypeName = 'user-defined';
+                break;
 		 default:
 					if (modelTypeCode<32767) modelTypeName= 'GeoTIFF Reserved Codes';
 					else if (modelTypeCode>32767) modelTypeName= 'Private User Implementations';
 			break;
-		}
-		
+		}		
 		return modelTypeName;
 	},
 	
@@ -138,16 +195,23 @@ GeotiffParser.prototype = {
 	getRasterTypeName: function (rasterTypeCode) {
 		var rasterTypeName;
 		switch(rasterTypeCode) {
-		 case 0: rasterTypeName= 'undefined'; break;
-		 case 1: rasterTypeName= 'RasterPixelIsArea'; break;
-		 case 2: rasterTypeName= 'RasterPixelIsPoint'; break;
-		 case 32767: rasterTypeName= 'user-defined'; break;
+            case 0:
+                rasterTypeName = 'undefined';
+                break;
+            case 1:
+                rasterTypeName = 'RasterPixelIsArea';
+                break;
+            case 2:
+                rasterTypeName = 'RasterPixelIsPoint';
+                break;
+            case 32767:
+                rasterTypeName = 'user-defined';
+                break;
 		 default:
 					if (rasterTypeCode<32767) rasterTypeName= 'GeoTIFF Reserved Codes';
 					else if (rasterTypeCode>32767) rasterTypeName= 'Private User Implementations';
 			break;
-		}
-		
+		}		
 		return rasterTypeName;
 	},
 	
@@ -200,8 +264,8 @@ GeotiffParser.prototype = {
 		4096:'VerticalCSTypeGeoKey',
 		4097:'VerticalCitationGeoKey',
 		4098:'VerticalDatumGeoKey',
-		4099:'VerticalUnitsGeoKey',
-		}
+		4099:'VerticalUnitsGeoKey'
+		};
 		var geoKeyName;
 
 		if (geoKey in geoKeyTagNames) {
@@ -210,7 +274,6 @@ GeotiffParser.prototype = {
 			console.log( "Unknown geoKey :", geoKey);
 			geoKeyName =   geoKey + "GeoKey";
 		}
-
 		return geoKeyName;
 	},
 
@@ -275,6 +338,8 @@ GeotiffParser.prototype = {
 			0x013F: 'PrimaryChromaticities',
 			0x0214: 'ReferenceBlackWhite',
 			0x0153: 'SampleFormat',
+			0x0154: 'SMinSampleValue',
+			0x0155: 'SMaxSampleValue',
 			0x022F: 'StripRowCounts',
 			0x014A: 'SubIFDs',
 			0x0124: 'T4Options',
@@ -333,7 +398,7 @@ GeotiffParser.prototype = {
 			0x85D8: 'ModelTransformation',
 			0x87AF: 'GeoKeyDirectory',
 			0x87B0: 'GeoDoubleParams',
-			0x87B1: 'GeoAsciiParams',
+			0x87B1: 'GeoAsciiParams'
 			
 		};
 
@@ -345,7 +410,6 @@ GeotiffParser.prototype = {
 			console.log( "Unknown Field Tag:", fieldTag);
 			fieldTagName = "Tag" + fieldTag;
 		}
-
 		return fieldTagName;
 	},
 	
@@ -363,7 +427,7 @@ GeotiffParser.prototype = {
 		9:'PHOTOMETRIC_ICCLAB',
 		10:'PHOTOMETRIC_ITULAB',
 		32844:'PHOTOMETRIC_LOGL',
-		32845:'PHOTOMETRIC_LOGLUV',
+		32845:'PHOTOMETRIC_LOGLUV'
 		};
 		var photometricName;
 
@@ -372,10 +436,8 @@ GeotiffParser.prototype = {
 		} else {
 			photometricName = "UNKNOWN";
 		}
-
 		return photometricName;
 	},
-
 		
 	/* Translate GeoKey to string  */
 	getCompressionTypeName:  function (key) {
@@ -404,7 +466,7 @@ GeotiffParser.prototype = {
 		34661:'COMPRESSION_JBIG',
 		34676:'COMPRESSION_SGILOG',
 		34677:'COMPRESSION_SGILOG24',
-		34712:'COMPRESSION_JP2000',
+		34712:'COMPRESSION_JP2000'
 		};
 		var compressionName;
 
@@ -413,7 +475,6 @@ GeotiffParser.prototype = {
 		} else {
 			compressionName = "UNKNOWN";
 		}
-
 		return compressionName;
 	},
 
@@ -431,7 +492,7 @@ GeotiffParser.prototype = {
 			0x0009: 'SLONG',
 			0x000A: 'SRATIONAL',
 			0x000B: 'FLOAT',
-			0x000C: 'DOUBLE',
+			0x000C: 'DOUBLE'
 		};
 
 		var fieldTypeName;
@@ -439,7 +500,6 @@ GeotiffParser.prototype = {
 		if (fieldType in fieldTypeNames) {
 			fieldTypeName = fieldTypeNames[fieldType];
 		}
-
 		return fieldTypeName;
 	},
 
@@ -488,9 +548,8 @@ GeotiffParser.prototype = {
 		var chunkInfo = {
 			'bits': ((rawBits << shiftLeft) >>> shiftRight),
 			'byteOffset': newByteOffset + Math.floor(totalBits / 8),
-			'bitOffset': totalBits % 8,
+			'bitOffset': totalBits % 8
 		};
-
 		return chunkInfo;
 	},
 
@@ -513,16 +572,41 @@ GeotiffParser.prototype = {
 			throw RangeError("Too many bytes requested");
 		}
 	},
+	
+	/* getSampleBytes : use Sampleformat  */
+	getSampleBytes: function (sampleFormat, numBytes, offset) {
+	
+		// Decompress strip.
+		switch (sampleFormat) {
+			// Uncompressed
+			case 1:
+			case 2: // two’s complement signed integer data
+				return this.getBytes(numBytes, offset);
+			case 3: // floating point data
+				{
+					if (numBytes == 3) {
+						return this.tiffDataView.getFloat32(offset, this.littleEndian) >>> 8;
+					} else if (numBytes == 4) {
+						return this.tiffDataView.getFloat32(offset, this.littleEndian);
+					}
+					// No break : if numBytes != 3 && 4 --> throw error
+				}
+			case 5: // Complex Int
+			case 6: // Complex IEEE floating point 
+			case 4: // void or undefined  
+				default:
+				throw Error("Do not attempt to parse the data  not handled  : " + sampleFormat);
+			break;
+			}
+			
+	},
 
 	/* from Tiff-js  */
 	getFieldValues: function (fieldTagName, fieldTypeName, typeCount, valueOffset) {
 		var fieldValues = [];
-
 		var fieldTypeLength = this.getFieldTypeLength(fieldTypeName);
 		var fieldValueSize = fieldTypeLength * typeCount;
 
-		
-				
 		if (fieldValueSize <= 4) {
 			// The value is stored at the big end of the valueOffset.
 			if (this.littleEndian === false) {
@@ -556,22 +640,21 @@ GeotiffParser.prototype = {
 		}
 
 		if (fieldTypeName === 'ASCII') {
-			fieldValues.forEach(function(e, i, a) { a[i] = String.fromCharCode(e); });
+            fieldValues.forEach(function (e, i, a) {
+                a[i] = String.fromCharCode(e);
+            });
 		}
-
 		return fieldValues;
 	},
 
 	/* from Tiff-js  */
 	clampColorSample: function(colorSample, bitsPerSample) {
 		var multiplier = Math.pow(2, 8 - bitsPerSample);
-
 		return Math.floor((colorSample * multiplier) + (1-multiplier));
 	},
 	
 	clampAffineColorSample: function(colorSample, bitsPerSample,vmin,vmax ) {
 		var multiplier = Math.pow(2, 8 ) / vmax;
-
 		return Math.floor((colorSample-vmin) * multiplier );
 	},
 
@@ -586,7 +669,6 @@ GeotiffParser.prototype = {
 	/* from Tiff-js  */
 	parseFileDirectory: function (byteOffset) {
 		var numDirEntries = this.getBytes(2, byteOffset);
-
 		var tiffFields = [];
 
 		for (var i = byteOffset + 2, entryCount = 0; entryCount < numDirEntries; i += 12, entryCount++) {
@@ -596,10 +678,8 @@ GeotiffParser.prototype = {
 			var valueOffset = this.getBytes(4, i + 8);
 
 			var fieldTagName = this.getFieldTagName( fieldTag );
-			var fieldTypeName = this.getFieldTypeName( fieldType );
-			
+			var fieldTypeName = this.getFieldTypeName( fieldType );			
 			var fieldValues = this.getFieldValues(fieldTagName, fieldTypeName, typeCount, valueOffset);
-
 			
 			tiffFields[fieldTagName] = { 'type': fieldTypeName, 'values': fieldValues };
 		}
@@ -610,7 +690,8 @@ GeotiffParser.prototype = {
 
 		if (nextIFDByteOffset === 0x00000000) {
 			return this.fileDirectories;
-		} else {
+        }
+        else {
 			return this.parseFileDirectory(nextIFDByteOffset);
 		}
 	},
@@ -639,13 +720,44 @@ GeotiffParser.prototype = {
 		return fileDirectory.PlanarConfiguration.values[0]; 
 		},
 		
+		
+	/* return the type  of the pixel or -1 */
+	getSampleFormat: function() {
+		var fileDirectory = this.fileDirectories[0];
+		if (fileDirectory.hasOwnProperty('SampleFormat') ==false ||
+			fileDirectory.SampleFormat.hasOwnProperty('values') == false ||
+			fileDirectory.SampleFormat.values == null)
+			return  1; 
+	
+		return fileDirectory.SampleFormat.values[0]; 
+		},
+		
+	/* return min and max values if resent or -1 */
+	getSampleMinMax: function() {
+		var fileDirectory = this.fileDirectories[0];
+		if (fileDirectory.hasOwnProperty('SMaxSampleValue') ==false ||
+			fileDirectory.SMaxSampleValue.hasOwnProperty('values') == false ||
+			fileDirectory.SMaxSampleValue.values == null)
+			return -1; 
+			
+		if (fileDirectory.hasOwnProperty('SMinSampleValue') ==false ||
+			fileDirectory.SMinSampleValue.hasOwnProperty('values') == false ||
+			fileDirectory.SMinSampleValue.values == null)
+			return -1; 
+	
+		return [fileDirectory.SMinSampleValue.values , fileDirectory.SMaxSampleValue.values]; 
+	
+		},
+		
+		
+		
+		
 	/* isBlockLoaded : this function check if the block with blockOffset value has been loaded  */
 	isBlockLoaded: function(blockOffset) {
 			var blocks = this.blocks;
 			for (var i=0;i<blocks.length;i++)
 				if (this.blocks[i]!=null && this.blocks[i].offset==blockOffset)
-					return i;
-				
+					return i;				
 			return -1;	
 		},
 		
@@ -654,8 +766,7 @@ GeotiffParser.prototype = {
 			var blocks = this.blocks;
 			for (var i=0;i<blocks.length;i++)
 				if (this.blocks[i]!=null && this.blocks[i].offset==blockOffset)
-					return this.blocks[i];
-				
+					return this.blocks[i];				
 			return null;	
 		},
 		
@@ -693,7 +804,7 @@ GeotiffParser.prototype = {
 		
 		var hdr_num_keys= fileDirectory.GeoKeyDirectory.values[3];
 		
-		var geoKeyFields= []
+        var geoKeyFields = [];
 		for (var iKey =0 ; iKey < hdr_num_keys ; iKey++){
 			/* GeoKey ID            */
 			var ent_key = 	fileDirectory.GeoKeyDirectory.values[4+ iKey*4];
@@ -705,22 +816,19 @@ GeotiffParser.prototype = {
 			var ent_val_offset = 	fileDirectory.GeoKeyDirectory.values[7+ iKey*4];
 				
 			var value = 'undefined';
-			if (ent_location==0)
-			{
+            if (ent_location == 0) {
 				/* store value into data value */
 				 value = ent_val_offset;
 				//console.log("ent_val_offset =" + value );	
 			}
-			else if (this.getFieldTagName(ent_location)=="GeoKeyDirectory")
-			{		
+            else if (this.getFieldTagName(ent_location) == "GeoKeyDirectory") {
 				console.log("ent_key =" + this.getGeoKeyName(ent_key));
 				console.log("ent_count =" + ent_count );
 				console.log("ent_val_offset =" + ent_val_offset );
 				console.log("GeoKeyDirectory =" );
 			
 			}
-			else if (this.getFieldTagName(ent_location)=="GeoDoubleParams")
-			{
+            else if (this.getFieldTagName(ent_location) == "GeoDoubleParams") {
 			/*
 				console.log("ent_key =" + this.getGeoKeyName(ent_key));
 				console.log("ent_count =" + ent_count );		
@@ -731,8 +839,7 @@ GeotiffParser.prototype = {
 				value = GeoDoubleParams[ent_val_offset];
 				
 			}
-			else if (this.getFieldTagName(ent_location)=="GeoAsciiParams")
-			{	
+            else if (this.getFieldTagName(ent_location) == "GeoAsciiParams") {
 				var str= "";
 				/*console.log("ent_key =" + this.getGeoKeyName(ent_key));
 				console.log("ent_count =" + ent_count );
@@ -741,23 +848,24 @@ GeotiffParser.prototype = {
 				if (ent_val_offset!='undefined' && 
 					ent_count!='undefined' && 
 					ent_count>0 &&
-					ent_val_offset <= ent_count-1) 
-					{
+                    ent_val_offset <= ent_count - 1) {
 						for (var j=ent_val_offset;j<ent_count-1;j++)
 							str+=GeoAsciiParams[j];
 						if (GeoAsciiParams[ent_count-1] != '|')
 							str+=GeoAsciiParams[ent_count-1];
 					 
 					}
-				value=str;
-					
-			}
-				
+				value=str;					
+			}				
 			geoKeyFields[this.getGeoKeyName(ent_key)] = {  'value': value };
-		}
-
-		
+		}		
 			this.geoKeys=geoKeyFields ;	
+			
+			if (this.geoKeys.hasOwnProperty('GTRasterTypeGeoKey') == false)
+				this.isPixelArea= 0;
+			if (this.getRasterTypeName( this.geoKeys.GTRasterTypeGeoKey.value )=='RasterPixelIsArea')
+				this.isPixelArea= 1;
+			
 	},
 	
 	/* Test */ 
@@ -771,20 +879,19 @@ GeotiffParser.prototype = {
 
 		// Band count : 1 or 3 bands RGB
 		console.log("SamplesPerPixel=" +   this.samplesPerPixel);
-		console.log("PlanarConfiruration=" + this.getPlanarConfiguration());
+		console.log("PlanarConfiruration=" + this.planarConfiguration);
 		console.log("Photometric =" +  this.getPhotometricName(this.photometricInterpretation));
 		console.log("Compression =" +  this.getCompressionTypeName(this.compression));
-		
+		console.log("SampleFormat : " , this.getSampleFormat());
+		console.log("getSampleMinMax : " , this.getSampleMinMax());
+	
 		var fileDirectory = this.fileDirectories[0];
-		if (this.hasStripOffset())
-		{
+        if (this.hasStripOffset()) {
 			var numoffsetValues = fileDirectory.StripOffsets.values.length;
 			console.log("Has Strips nb offsetvalues count:" + numoffsetValues );
-			
 		}
 			
-	    if (this.hasTileOffset())
-		{
+        if (this.hasTileOffset()) {
 			var  numoffsetValues = fileDirectory.TileOffsets.values.length;
 			console.log("Has Tiles  offsetvalues count:" + numoffsetValues );
 		}
@@ -806,7 +913,6 @@ GeotiffParser.prototype = {
 		console.log("hdr_num_keys =" + fileDirectory.GeoKeyDirectory + " " +hdr_num_keys );
 		
 		this.consoleCRSProperty();
-		
 		console.log("pixelSize =" + this.getPixelSize());
 	},
 	
@@ -829,8 +935,6 @@ GeotiffParser.prototype = {
 	},
 		
 		
-		
-
 	/*
 	 * parse Header
 	 * 
@@ -847,10 +951,8 @@ GeotiffParser.prototype = {
 		var firstIFDByteOffset = this.getBytes(4, 4);
 
 		this.fileDirectories = this.parseFileDirectory(firstIFDByteOffset);
-
 		var fileDirectory = this.fileDirectories[0];
 
-	
 		this.imageWidth = fileDirectory.ImageWidth.values[0];
 		this.imageLength = fileDirectory.ImageLength.values[0];
 	    this.photometricInterpretation = fileDirectory.PhotometricInterpretation.values[0];
@@ -861,7 +963,7 @@ GeotiffParser.prototype = {
 			this.sampleProperties[i] = {
 				'bitsPerSample': bitsPerSample,
 				'hasBytesPerSample': false,
-				'bytesPerSample': undefined,
+                'bytesPerSample': undefined
 			};
 
 			if ((bitsPerSample % 8) === 0) {
@@ -874,12 +976,10 @@ GeotiffParser.prototype = {
 		
 		this.compression = (fileDirectory.Compression) ? fileDirectory.Compression.values[0] : 1;
 		
-		
 		if (fileDirectory.ColorMap) {
 			this.colorMapValues = fileDirectory.ColorMap.values;
 			this.colorMapSampleSize = Math.pow(2, this.sampleProperties[0].bitsPerSample);
 		}
-		
 		
 		if (fileDirectory.ExtraSamples) {
 			this.extraSamplesValues = fileDirectory.ExtraSamples.values;
@@ -887,23 +987,22 @@ GeotiffParser.prototype = {
 		}
 
 		
+		if (fileDirectory.hasOwnProperty('PlanarConfiguration') &&true &&
+			fileDirectory.PlanarConfiguration.hasOwnProperty('values') == true)
+			this.planarConfiguration= fileDirectory.PlanarConfiguration.values[0]; 
 		
 		
 		this.parseGeoKeyDirectory();
-		
-		
 	},
-
 
 	/*
 	* SubFunction (should be private)
 	* Decode a Strip or a Tiles 
 	*/
     decodeBlock: function (stripOffset,stripByteCount,moduleDecompression) {
-	
 		var decodedBlock  = [];
 		var jIncrement = 1, pixel = [] ; 
-	
+		var sampleformat  = this.getSampleFormat();
 		// Decompress strip.
 		switch (this.compression) {
 			// Uncompressed
@@ -920,7 +1019,6 @@ GeotiffParser.prototype = {
 					jIncrement = bytesPerPixel;
 				} else {
 					jIncrement = 0;
-
 					throw RangeError("Cannot handle sub-byte bits per pixel");
 				}
 				
@@ -929,10 +1027,8 @@ GeotiffParser.prototype = {
 					// Loop through samples (sub-pixels).
 					for (var m = 0, pixel = []; m < this.samplesPerPixel; m++) {
 						if (this.sampleProperties[m].hasBytesPerSample) {
-							// XXX: This is wrong!
 							var sampleOffset = this.sampleProperties[m].bytesPerSample * m;
-
-							pixel.push(this.getBytes(this.sampleProperties[m].bytesPerSample, stripOffset + byteOffset + sampleOffset));
+							pixel.push(this.getSampleBytes(sampleformat,this.sampleProperties[m].bytesPerSample, stripOffset + byteOffset + sampleOffset));
 						} else {
 							var sampleInfo = this.getBits(this.sampleProperties[m].bitsPerSample, stripOffset + byteOffset, bitOffset);
 
@@ -950,16 +1046,12 @@ GeotiffParser.prototype = {
 				if (this.compression == 5) // LZW
 				{
 					var decompressed = LZString.decompressFromUint8Array(decodedBlock);
-					decodedBlock  = decompressed;					
 				}
-				
 			break;
 			
-
 			// Deflate 
 			// Code not yes validate 
 			case 32946:
-				
 				var inflator = new moduleDecompression.Inflate();
 				var bitOffset = 0;
 				var hasBytesPerPixel = false;
@@ -1056,8 +1148,7 @@ GeotiffParser.prototype = {
 							}
 
 							// Is our pixel complete?
-							if (sample === this.samplesPerPixel)
-							{
+                            if (sample === this.samplesPerPixel) {
 								decodedBlock.push(pixel);
 
 								pixel = [];
@@ -1085,10 +1176,9 @@ GeotiffParser.prototype = {
 		}
 					
 		var blockInfo = {
-		'offset': stripOffset,
-		'value': decodedBlock,
+			'offset': stripOffset,
+            'value': decodedBlock
 		};
-
 		return blockInfo;		
 	},
 
@@ -1099,10 +1189,10 @@ GeotiffParser.prototype = {
 	getDecompressionModule: function (stripOffset,stripByteCount,moduleDecompression) {
 		var moduleDecompression = undefined;
 		// utiliser requirejs pour charger les modules de décompression 
-		if (this.compression==32946)
-		{
+        if (this.compression == 32946) {
 			define(function (require) {
-			moduleDecompression = require('pako_inflate'); });
+                moduleDecompression = require('pako_inflate');
+            });
 			//moduleDecompression= require('pako_inflate');
 		}
 		return moduleDecompression;
@@ -1113,13 +1203,13 @@ GeotiffParser.prototype = {
 	 */
 	loadPixels: function () {
 		var FullPixelValues=[];
+		var index = 0;
 		for (var j=0;j<this.imageLength;j++)
-			for (var i=0;i<this.imageWidth;i++)
-			{
+            for (var i = 0; i < this.imageWidth; i++) {
 				var pixelValue = this.getPixelValueOnDemand(i,j);
-				for (var k=0;k<this.samplesPerPixel;k++)
-				{
-					FullPixelValues.push(pixelValue[k]);
+                for (var k = 0; k < this.samplesPerPixel; k++) {
+					FullPixelValues[index] = pixelValue[k];
+					index++;
 				}
 			}
 		return FullPixelValues;
@@ -1130,13 +1220,11 @@ GeotiffParser.prototype = {
 	*  If you have a multiband image , you should define how to combine bands in order to obtain a RGBA value
 	*/
 	getRGBAPixelValue: function(pixelSamples) {
-	
 		var red = 0;
 		var green = 0;
 		var blue = 0;
 		var opacity = 1.0;
 
-		
 		// To Understand this portion of code from Tiff-JS
 		if (this.numExtraSamples > 0) {
 			for (var k = 0; k < this.numExtraSamples; k++) {
@@ -1149,8 +1237,6 @@ GeotiffParser.prototype = {
 			}
 		}
 		//-------------------------------------------
-		
-		
 		var aRGBAPixelValue = [];
 		switch (this.photometricInterpretation) {
 			// Bilevel or Grayscale
@@ -1161,7 +1247,9 @@ GeotiffParser.prototype = {
 				}
 
 				// Invert samples.
-				pixelSamples.forEach(function(sample, index, samples) { samples[index] = invertValue - sample; });
+                pixelSamples.forEach(function (sample, index, samples) {
+                    samples[index] = invertValue - sample;
+                });
 
 			// Bilevel or Grayscale
 			// BlackIsZero
@@ -1173,15 +1261,13 @@ GeotiffParser.prototype = {
 			case 2:
 				if (this.samplesPerPixel==1)
 					red = green = blue = this.clampColorSample(pixelSamples[0], this.sampleProperties[0].bitsPerSample);
-				else if (this.samplesPerPixel>2)
-				{					
+                else if (this.samplesPerPixel > 2) {
 					red = this.clampColorSample(pixelSamples[0], this.sampleProperties[0].bitsPerSample);
 					green = this.clampColorSample(pixelSamples[1], this.sampleProperties[1].bitsPerSample);
 					blue = this.clampColorSample(pixelSamples[2], this.sampleProperties[2].bitsPerSample);
 				}
 				// Assuming 4 => RGBA 
-				if (this.samplesPerPixel==4)
-				{
+                if (this.samplesPerPixel == 4) {
 				// Check this function A should be a value between 0->1 ? then devide pixelSamples[3]/this.sampleProperties[3].bitsPerSample
 					var maxValue = Math.pow(2, this.sampleProperties[0].bitsPerSample);
 					opacity = pixelSamples[3] / maxValue;
@@ -1217,13 +1303,11 @@ GeotiffParser.prototype = {
 	*  If you have a multiband image , you should define how to combine bands in order to obtain a RGBA value
 	*/
 	getMinMaxPixelValue: function(pixelSamples,vmin,vmax) {
-	
 		var red = 0;
 		var green = 0;
 		var blue = 0;
 		var opacity = 1.0;
 
-		
 		// To Understand this portion of code from Tiff-JS
 		if (this.numExtraSamples > 0) {
 			for (var k = 0; k < this.numExtraSamples; k++) {
@@ -1236,8 +1320,6 @@ GeotiffParser.prototype = {
 			}
 		}
 		//-------------------------------------------
-		
-		
 		var aRGBAPixelValue = [];
 		switch (this.photometricInterpretation) {
 			// Bilevel or Grayscale
@@ -1248,7 +1330,9 @@ GeotiffParser.prototype = {
 				}
 
 				// Invert samples.
-				pixelSamples.forEach(function(sample, index, samples) { samples[index] = invertValue - sample; });
+                pixelSamples.forEach(function (sample, index, samples) {
+                    samples[index] = invertValue - sample;
+                });
 
 			// Bilevel or Grayscale
 			// BlackIsZero
@@ -1260,15 +1344,13 @@ GeotiffParser.prototype = {
 			case 2:
 				if (this.samplesPerPixel==1)
 					red = green = blue = this.clampAffineColorSample(pixelSamples[0], this.sampleProperties[0].bitsPerSample,vmin,vmax);
-				else if (this.samplesPerPixel>2)
-				{					
+                else if (this.samplesPerPixel > 2) {
 					red = this.clampAffineColorSample(pixelSamples[0], this.sampleProperties[0].bitsPerSample,vmin,vmax);
 					green = this.clampAffineColorSample(pixelSamples[1], this.sampleProperties[1].bitsPerSample,vmin,vmax);
 					blue = this.clampAffineColorSample(pixelSamples[2], this.sampleProperties[2].bitsPerSample,vmin,vmax);
 				}
 				// Assuming 4 => RGBA 
-				if (this.samplesPerPixel==4)
-				{
+                if (this.samplesPerPixel == 4) {
 				// Check this function A should be a value between 0->1 ? then devide pixelSamples[3]/this.sampleProperties[3].bitsPerSample
 					var maxValue = Math.pow(2, this.sampleProperties[0].bitsPerSample);
 					opacity = pixelSamples[3] / maxValue;
@@ -1299,21 +1381,14 @@ GeotiffParser.prototype = {
 		return aRGBAPixelValue;
 	},
 	 
-	/* Test getPixelValueOnDemand
+	 /* Test getPixelValueOnDemand
 	*  start implementation : 
 	*  1 -  check if the block is loaded  if not load the block
 	*  2 - get the pixel value in the block
 	*/
-	getPixelValueOnDemand: function(x,y) {
-		if(this.getPlanarConfiguration()!=1)
-			throw("Other Planar Configuration is not yet implemented"); 
-	
-   	
-		if (this.isPixelArea())
-		{
-			x= Math.floor(x);
-			y= Math.floor(y);
-		}
+	getClosestPixelValue: function(x,y) {
+		x= Math.floor(x);
+		y= Math.floor(y);
 		
 		var fileDirectory = this.fileDirectories[0];
 		var blockToLoad = 0;
@@ -1326,9 +1401,7 @@ GeotiffParser.prototype = {
 		var yInBlock=y;
 		var blockWidth = 0 ;
 		var blockInfo = [] ;
-		if (this.hasStripOffset())
-		{
-			
+        if (this.hasStripOffset()) {
 			// If RowsPerStrip is missing, the whole image is in one strip.
 			if (fileDirectory.RowsPerStrip) {
 				 rowsPerStrip = fileDirectory.RowsPerStrip.values[0];
@@ -1340,8 +1413,7 @@ GeotiffParser.prototype = {
 			blockWidth = this.imageWidth;
 			
 			var idBlocks = this.isBlockLoaded( offsetValues[blockToLoad]);
-			if ( idBlocks == -1)
-			 {
+            if (idBlocks == -1) {
 				 // StripByteCounts is supposed to be required, but see if we can recover anyway.
 				if (fileDirectory.StripByteCounts) {
 					 blockByteCountValues = fileDirectory.StripByteCounts.values;
@@ -1358,18 +1430,13 @@ GeotiffParser.prototype = {
 				this.addBlock(blockToLoad,blockInfo );	
 				//console.log("Load block " , blockToLoad);
 			 }
-			 else
-			 {
+            else {
 				//console.log("Block is already load" , blockToLoad, idBlocks );
 				blockInfo = this.blocks[idBlocks];
 			 }
-			 
 			 yInBlock= y %rowsPerStrip ; 
-			
-				
 		}
-		else if (this.hasTileOffset())
-		{
+        else if (this.hasTileOffset()) {
 			 offsetValues = fileDirectory.TileOffsets.values;
 			 var tileLength = fileDirectory.TileLength.values[0];
 			 var tileWidth = fileDirectory.TileWidth.values[0];
@@ -1380,28 +1447,57 @@ GeotiffParser.prototype = {
 			 blockWidth = tileWidth;
 			 
 			 var idBlocks = this.isBlockLoaded( offsetValues[blockToLoad]);
-			 if ( idBlocks == -1)
-			 {
+            if (idBlocks == -1) {
 				blockByteCountValues = fileDirectory.TileByteCounts.values;
 				blockInfo = this.decodeBlock(offsetValues[blockToLoad], blockByteCountValues[blockToLoad],decompressionModule);
 				this.addBlock(blockToLoad,blockInfo );	
 				//console.log("Load block " , blockToLoad);
 			 }
-			 else
-			 {
+            else {
 				//console.log("Block is already load" , blockToLoad, idBlocks );
 				blockInfo = this.blocks[idBlocks];
 			 }
-			 
 			 xInBlock= x %tileWidth ; 
 			 yInBlock= y %tileLength ; 
-			 
 		}
 		var indice = yInBlock*blockWidth+xInBlock;
 		return blockInfo.value[indice];
-	
 	},
 	
+	/* Test getPixelValueOnDemand
+	*  start implementation : 
+	*  1 -  check if the block is loaded  if not load the block
+	*  2 - get the pixel value in the block
+	*/
+	getPixelValueOnDemand: function(x,y) {
+		if(this.planarConfiguration!=1)
+			throw("Other Planar Configuration is not yet implemented"); 
+	
+   	
+		if (this.isPixelArea)
+		{
+			return this.getClosestPixelValue(x,y);
+		}
+		
+		/* Calcul de l'interpolation 
+		var ix= Math.floor(x);
+		var iy= Math.floor(y);
+		var  a1 = this.getPixelValueOnDemand(ix, iy);
+        var  a2 = this.getPixelValueOnDemand(ix + 1, iy);
+        var  a3 = this.getPixelValueOnDemand(ix + 1, iy + 1);
+        var  a4 = this.getPixelValueOnDemand(ix, iy + 1);
+	    // Avant d'inerpoler  : vérifier si on a les même valeurs 
+	
+		// puis calculer l'interpolation en tre 4 val (formule ?) 
+		*/
+		
+		// retourne la valeur du pixel le plus proche 
+		var ix= Math.floor(x+0.5);
+		var iy= Math.floor(y+0.5);
+		return this.getClosestPixelValue(ix, iy);
+        
+		
+	},
 	
 	/** get the CRS code */
 	getCRSCode: function() {
@@ -1415,12 +1511,10 @@ GeotiffParser.prototype = {
 		else if (this.getModelTypeName( this.geoKeys.GTModelTypeGeoKey.value )=='ModelTypeProjected'  &&
 				 this.geoKeys.hasOwnProperty('ProjectedCSTypeGeoKey'))
 			CRSCode =this.geoKeys['ProjectedCSTypeGeoKey'].value ;
-		else if (this.getModelTypeName( this.geoKeys.GTModelTypeGeoKey.value )=='user-defined')
-		{
+        else if (this.getModelTypeName(this.geoKeys.GTModelTypeGeoKey.value) == 'user-defined') {
 			if (this.geoKeys.hasOwnProperty('ProjectedCSTypeGeoKey'))
-				CRSCode =this.geoKeys['ProjectedCSTypeGeoKey'].value 
-			else
-				if (this.geoKeys.hasOwnProperty('GeographicTypeGeoKey'))
+                CRSCode = this.geoKeys['ProjectedCSTypeGeoKey'].value;
+            else if (this.geoKeys.hasOwnProperty('GeographicTypeGeoKey'))
 					CRSCode =this.geoKeys['GeographicTypeGeoKey'].value ;
 				else	
 					// Littel Hack for 3857
@@ -1431,8 +1525,6 @@ GeotiffParser.prototype = {
 					this.consoleCRSProperty();
 		
 		}
-			
-	
 		return CRSCode;
 	},
 	
@@ -1453,14 +1545,12 @@ GeotiffParser.prototype = {
 			this.test_consoleGeoKeys("Projected CS Parameter GeoKeys",ProjectedCS_GeoKeys);
 			this.test_consoleGeoKeys("Projection Definition GeoKeys",Projection_GeoKeys);
 			this.test_consoleGeoKeys("Vertical CS Parameter Keys",Vertical_GeoKeys);
-		
 	},
 	
 	/** show consoleGeokey  */
 	test_consoleGeoKeys: function(Label,GeoKeyTab) {
 		console.log(Label);
-		for (var i=GeoKeyTab[0];i<=GeoKeyTab[1];i++)
-			{
+        for (var i = GeoKeyTab[0]; i <= GeoKeyTab[1]; i++) {
 				var geoKeyName = this.getGeoKeyName( i );
 				if (this.geoKeys.hasOwnProperty(geoKeyName))
 					console.log(geoKeyName + " " + this.geoKeys[geoKeyName].value );
@@ -1469,7 +1559,6 @@ GeotiffParser.prototype = {
 	
 	/** isPixelArea */
 	isPixelArea: function() {
-		var CRSCode = 0;
 		if (this.geoKeys.hasOwnProperty('GTRasterTypeGeoKey') == false)
 			return true; // default 
 		if (this.getRasterTypeName( this.geoKeys.GTRasterTypeGeoKey.value )=='RasterPixelIsArea')
@@ -1484,21 +1573,43 @@ GeotiffParser.prototype = {
 	 *      var pixel = parse.getPixelValue(pixels,i,j);
 	 */		
 	getPixelValue: function(buffer,x,y) {
+        if (this.getPlanarConfiguration() != 1) {
+	 		throw("Other Planar Configuration is not yet implemented"); 
+        }
 	
-	if(this.getPlanarConfiguration()!=1)
-	 throw("Other Planar Configuration is not yet implemented"); 
-	
-	var value = []
-	if( x<0 || x>=this.imageWidth || y<0 || y>=this.imageLength)
+        var value = [];
+        if (x < 0 || x >= this.imageWidth || y < 0 || y >= this.imageLength) {
 		return value;
+        }
 
 	var indice = this.samplesPerPixel*(y*this.imageWidth+x);
-	for (var i=0;i<this.samplesPerPixel;i++)
-		{
+        for (var i = 0; i < this.samplesPerPixel; i++) {
 			//console.log(x,y,this.samplesPerPixel,i,buffer[indice+i] ) ;
-			value.push(buffer[indice+i]);
+            value[i] = buffer[indice + i]; // don't use array.push in big loops
 		 }
 	return value;
+    },
+
+    getLowResPixelValue: function (buffer, x, y) {
+        if (this.getPlanarConfiguration() != 1) {
+            throw("Other Planar Configuration is not yet implemented");
+        }
+
+        var value = [];
+        if (x < 0 || x >= this.imageWidth || y < 0 || y >= this.imageLength) {
+            return value;
+        }
+
+        var indice1 = this.samplesPerPixel * (y * this.imageWidth + x);
+        var offsetX = (x < this.imageWidth ? x + 1 : x);
+        var indice2 = this.samplesPerPixel * (y * this.imageWidth + offsetX );
+        var indice3 = this.samplesPerPixel * (y * this.imageWidth + x);
+        var indice4 = this.samplesPerPixel * ((y < this.imageLength ? y + 1 : y) * this.imageWidth + offsetX);
+        for (var i = 0; i < this.samplesPerPixel; i++) {
+            var averageValue = (buffer[indice1+i] +  buffer[indice2+i] +  buffer[indice3+i]+  buffer[indice4+i]) / 4;
+            value[i] = Math.round(averageValue);
+        }
+        return value;
     },
 
 	/**
@@ -1506,16 +1617,10 @@ GeotiffParser.prototype = {
 	 */		
 
 	toCanvas: function (canvas, xmin,ymin, xmax, ymax,vmin,vmax) {
-		
-		
-	
-		
 		var mycanvas = canvas || document.createElement('canvas');
 
-		if (mycanvas.getContext == null) 
-		{
+        if (mycanvas.getContext == null) {
 			throw RangeError("No Context for canvas");
-			return ;
 		}
 		
 		var ctx = mycanvas.getContext("2d");
@@ -1524,13 +1629,10 @@ GeotiffParser.prototype = {
 		var pixrgba= [];
 		// Set a default fill style.	
 		ctx.fillStyle = this.makeRGBAFillValue(255, 255, 255, 0);
-		for (var  y=ymin;y<ymax;y++)
-		{ 
-			for (var  x=xmin;x<xmax;x++)
-			{
+        for (var y = ymin; y < ymax; y++) {
+            for (var x = xmin; x < xmax; x++) {
 				var pixSample = this.getPixelValueOnDemand(x,y);
-				if (pixSample!= 'undefined')
-				{
+                if (pixSample != 'undefined') {
 					if (vmin!='undefined' && vmax!='undefined')
 						pixrgba= this.getMinMaxPixelValue(pixSample,vmin,vmax);
 					else
@@ -1543,13 +1645,11 @@ GeotiffParser.prototype = {
 				ctx.fillRect(x-xmin, y-ymin, 1, 1);
 			}
 		}
-
 		return mycanvas;
 	},
 
 	/** Compute or retreive a PixelScale / Resolution or CellSize */
-	getPixelSize : function() 
-	{
+    getPixelSize: function () {
 		 var pixel_scale = ['undefined','undefined'];
 		 var fileDirectory = this.fileDirectories[0];
 		 if (typeof(fileDirectory.ModelPixelScale) != 'undefined' && fileDirectory.ModelPixelScale != null &&
@@ -1577,8 +1677,41 @@ GeotiffParser.prototype = {
     return [0 , x , y];
     },
 	
-	
-	
+	/**
+	* return a BBox of the Image
+	*/
+	GetBBox: function( ) {
+		var pCRS = this.getCRSCode();
+		
+		var ul=  this.ImageToPCS(0,0);
+		var ur=  this.ImageToPCS(this.imageWidth,0);
+		var ll=  this.ImageToPCS(0,this.imageLength);
+		var lr=  this.ImageToPCS(this.imageWidth,this.imageLength);
+        if (ul[0] != 1 || ur[0] != 1 || ll[0] != 1 || lr[0] != 1) {
+			throw TypeError("BBox error");
+		}
+		
+        // Create the BBox structure
+        // Coord a counterclockWise
+		var  lcoordinates=[];
+		lcoordinates.push(ul.splice(1,2));
+        lcoordinates.push(ll.splice(1, 2));
+        lcoordinates.push(lr.splice(1, 2));
+		lcoordinates.push(ur.splice(1,2));
+		
+		var projstring ='EPSG:' + pCRS.toString();
+		var bbox = {
+			'WKID': pCRS.toString(),
+			'EPSG': projstring,
+			'coord': lcoordinates,
+			'ulidx': 0,
+			'llidx': 1,
+			'lridx': 2,
+			'uridx': 3
+		};
+		return bbox;
+	},
+
 /**
  * Translate a pixel/line coordinates to projection coordinate .
  * See GeoTiff geo_trans.c
@@ -1592,8 +1725,7 @@ GeotiffParser.prototype = {
 	if (typeof(fileDirectory.ModelTiepoint) == 'undefined' || fileDirectory.ModelTiepoint == null ||
 	    typeof(fileDirectory.ModelTiepoint.values) == 'undefined' || fileDirectory.ModelTiepoint.values == null)
 	  tiepoint_count = 0;
-	 else
-	  {
+        else {
 	  
 		var modelTiepoint = fileDirectory.ModelTiepoint.values;
 		tiepoint_count= modelTiepoint.length;
@@ -1602,8 +1734,7 @@ GeotiffParser.prototype = {
 	if (typeof(fileDirectory.ModelPixelScale) == 'undefined' || fileDirectory.ModelPixelScale == null ||
 	    typeof(fileDirectory.ModelPixelScale.values) == 'undefined' || fileDirectory.ModelPixelScale.values == null)
  	 count = 0;
-	 else
-	  {
+        else {
 	  var modelPixelScale = fileDirectory.ModelPixelScale.values;
 	  count= modelPixelScale.length;
 	  }
@@ -1611,8 +1742,7 @@ GeotiffParser.prototype = {
 	if (typeof(fileDirectory.ModelTransformation) == 'undefined' || fileDirectory.ModelTransformation == null||
 	    typeof(fileDirectory.ModelTransformation.values) == 'undefined' || fileDirectory.ModelTransformation.values == null)
 		transform_count = 0;
-	 else
-	  {
+        else {
 	  var modelTransformation = fileDirectory.ModelTransformation.values;
 	  transform_count= modelTransformation.length;
 	  }
@@ -1621,8 +1751,7 @@ GeotiffParser.prototype = {
 	//If the pixelscale count is zero, but we have tiepoints use      
 	//the tiepoint based approach.                                    
 	//--------------------------------------------------------------------
-    if( tiepoint_count > 6 && count == 0 ) 
-    {
+        if (tiepoint_count > 6 && count == 0) {
 		console.log(" tiepoint_count " , tiepoint_count);
 	
         res = this.GTIFTiepointTranslate( tiepoint_count / 6, x, y ,true);
@@ -1631,8 +1760,7 @@ GeotiffParser.prototype = {
 	//--------------------------------------------------------------------
 	//If we have a transformation matrix, use it. 			
 	//--------------------------------------------------------------------
-   else if( transform_count == 16 ) 
-    {
+        else if (transform_count == 16) {
 		var transform = fileDirectory.ModelTransformation.values;
 	
         var x_in = x;
@@ -1647,13 +1775,11 @@ GeotiffParser.prototype = {
 	//--------------------------------------------------------------------
 	//For now we require one tie point, and a valid pixel scale.      
 	//-------------------------------------------------------------------- 
-    else if( count < 3 || tiepoint_count < 6 ) 
-    {
+        else if (count < 3 || tiepoint_count < 6) {
         res = [0 , x , y];
     } 
 
-    else 
-    {
+        else {
         var pixel_scale = fileDirectory.ModelPixelScale.values;
 		var tiepoints = fileDirectory.ModelTiepoint.values;
 		x = (x - tiepoints[0]) * pixel_scale[0] + tiepoints[3];
@@ -1661,7 +1787,6 @@ GeotiffParser.prototype = {
 
         res = [1 , x, y ];
     }
-	
     return res;
 	},
 	
@@ -1670,7 +1795,6 @@ GeotiffParser.prototype = {
  * See GeoTiff geo_trans.c
  */
 	inv_geotransform: function( gt_in ) {
-  
 	var     gt_out = [0 , 0 , 0, 0 , 0 , 0];
 	var	det, inv_det;
 
@@ -1705,7 +1829,6 @@ GeotiffParser.prototype = {
  */
 
   PCSToImage: function( x, y ) {
-
     var     res = [0 , x , y];
     var 	tiepoint_count, count, transform_count = 0;
    
@@ -1716,8 +1839,7 @@ GeotiffParser.prototype = {
 	if (typeof(fileDirectory.ModelTiepoint) == 'undefined' || fileDirectory.ModelTiepoint == null ||
 	    typeof(fileDirectory.ModelTiepoint.values) == 'undefined' || fileDirectory.ModelTiepoint.values == null)
 	  tiepoint_count = 0;
-	 else
-	  {
+        else {
 	  
 		var modelTiepoint = fileDirectory.ModelTiepoint.values;
 		tiepoint_count= modelTiepoint.length;
@@ -1726,8 +1848,7 @@ GeotiffParser.prototype = {
 	if (typeof(fileDirectory.ModelPixelScale) == 'undefined' || fileDirectory.ModelPixelScale == null ||
 	    typeof(fileDirectory.ModelPixelScale.values) == 'undefined' || fileDirectory.ModelPixelScale.values == null)
  	 count = 0;
-	 else
-	  {
+        else {
 	  var modelPixelScale = fileDirectory.ModelPixelScale.values;
 	  count= modelPixelScale.length;
 	  }
@@ -1735,8 +1856,7 @@ GeotiffParser.prototype = {
 	if (typeof(fileDirectory.ModelTransformation) == 'undefined' || fileDirectory.ModelTransformation == null||
 	    typeof(fileDirectory.ModelTransformation.values) == 'undefined' || fileDirectory.ModelTransformation.values == null)
 		transform_count = 0;
-	 else
-	  {
+        else {
 	  var modelTransformation = fileDirectory.ModelTransformation.values;
 	  transform_count= modelTransformation.length;
 	  }
@@ -1744,8 +1864,7 @@ GeotiffParser.prototype = {
 //      If the pixelscale count is zero, but we have tiepoints use      
 //      the tiepoint based approach.                                    
 // -------------------------------------------------------------------- 
-    if( tiepoint_count > 6 && count == 0 )
-    {
+        if (tiepoint_count > 6 && count == 0) {
        res = this.GTIFTiepointTranslate( tiepoint_count / 6, x, y , false);
     }
 
@@ -1753,8 +1872,7 @@ GeotiffParser.prototype = {
 //      Handle matrix - convert to "geotransform" format, invert and    
 //      apply.                                                          
 // -------------------------------------------------------------------- 
-    else if( transform_count == 16 )
-    {
+        else if (transform_count == 16) {
 		var transform = fileDirectory.ModelTransformation.values;
 	
         var x_in = x;
@@ -1773,8 +1891,7 @@ GeotiffParser.prototype = {
 		
         if( !result[0])
             res = [0 , x , y];
-        else
-        {
+            else {
 			var gt_out=result[1];
             x = x_in * gt_out[0] + y_in * gt_out[1] + gt_out[2];
             y = x_in * gt_out[3] + y_in * gt_out[4] + gt_out[5];
@@ -1786,8 +1903,7 @@ GeotiffParser.prototype = {
 // -------------------------------------------------------------------- 
 //      For now we require one tie point, and a valid pixel scale.      
 // -------------------------------------------------------------------- 
-    else if( count >= 3 && tiepoint_count >= 6 )
-    {
+        else if (count >= 3 && tiepoint_count >= 6) {
         var pixel_scale = fileDirectory.ModelPixelScale.values;
 		var tiepoints = fileDirectory.ModelTiepoint.values;
 		x = (x - tiepoints[3]) / pixel_scale[0] + tiepoints[0];
@@ -1797,7 +1913,5 @@ GeotiffParser.prototype = {
     }
 
     return res;
-},
-
-
 }
+};
